@@ -94,7 +94,7 @@ export default function PrivacyPage() {
                 운영자에게 연락할 수 있습니다.
               </p>
               <p className="mt-3 rounded-2xl bg-slate-50 p-4 font-bold text-slate-800">
-                이메일: contact@haemala.com
+                이메일: steamcool@kakao.com
               </p>
             </section>
           </div>
