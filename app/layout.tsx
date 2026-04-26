@@ -1,42 +1,66 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+const siteUrl = "https://www.haemala.com";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.haemala.com"),
+  metadataBase: new URL(siteUrl),
   title: {
-    default: "해말아 | 무료 로또 번호 추천",
-    template: "%s",
+    default: "해말아 | 할까 말까 고민될 때 결정 성향 테스트",
+    template: "%s | 해말아",
   },
   description:
-    "꿈 해몽 로또 번호, 오늘의 로또 번호, 무료 로또 번호 생성기를 제공하는 운세형 번호 리포트 서비스입니다.",
+    "할까 말까 고민될 때, 해말아. 결정 성향 테스트, 선택 시뮬레이터, 오늘의 결정운으로 지금 선택을 더 선명하게 확인하세요.",
   keywords: [
-    "로또 번호 추천",
-    "무료 로또 번호 생성기",
-    "꿈 해몽 로또",
-    "오늘의 로또 번호",
-    "로또 번호 자동 생성",
     "해말아",
+    "할까 말까",
+    "성향테스트",
+    "결정 테스트",
+    "선택 시뮬레이터",
+    "오늘의 운세",
+    "랜덤 결정기",
+    "심리테스트",
   ],
+  authors: [{ name: "Haemala" }],
+  creator: "Haemala",
+  publisher: "Haemala",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
-    title: "해말아 | 무료 로또 번호 추천",
-    description: "꿈을 로또 번호로 번역하는 무료 번호 리포트 서비스",
-    url: "https://www.haemala.com",
-    siteName: "해말아",
-    locale: "ko_KR",
     type: "website",
+    locale: "ko_KR",
+    url: siteUrl,
+    siteName: "해말아",
+    title: "해말아 | 할까 말까 고민될 때 결정 성향 테스트",
+    description:
+      "결정 성향을 분석하고 지금 선택해도 되는지 시뮬레이션하는 해말아.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "해말아 | 할까 말까 고민될 때",
+    description:
+      "성향테스트와 선택 시뮬레이터로 오늘의 결정을 확인하세요.",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#f7f3ec",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="ko">
-      <head>
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3423569278516833"
-          crossOrigin="anonymous"
-        />
-      </head>
       <body>{children}</body>
     </html>
   );

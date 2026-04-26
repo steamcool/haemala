@@ -1,257 +1,267 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import ShareResultButtons from "../components/ShareResultButtons";
+import { useMemo, useState } from "react";
 
-type LottoResult = {
-  id: string;
-  numbers: number[];
-  bonus: number;
-  createdAt: string;
-  score: number;
-  sum: number;
-  odd: number;
-  low: number;
-};
+const presets = [
+  "연락할까 말까",
+  "살까 말까",
+  "먹을까 말까",
+  "갈까 말까",
+  "시작할까 말까",
+  "그만둘까 말까",
+  "고백할까 말까",
+  "기다릴까 말까",
+];
 
-function hashString(input: string) {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
+const results = [
+  {
+    verdict: "해라",
+    tone: "지금은 움직이는 쪽이 낫습니다.",
+    desc: "단, 크게 걸지 말고 되돌릴 수 있는 선에서 작게 실행하세요.",
+  },
+  {
+    verdict: "말아라",
+    tone: "오늘은 멈추는 쪽이 낫습니다.",
+    desc: "감정이 올라온 상태라면 판단이 과격해질 수 있습니다.",
+  },
+  {
+    verdict: "조금만 해라",
+    tone: "완전 실행보다 테스트 실행이 맞습니다.",
+    desc: "작게 해보고 반응을 확인한 뒤 다음 선택을 하세요.",
+  },
+  {
+    verdict: "3시간 뒤 다시 봐라",
+    tone: "지금 바로 결정하기엔 흔들림이 있습니다.",
+    desc: "시간을 조금 두면 진짜 원하는 선택이 더 선명해집니다.",
+  },
+  {
+    verdict: "조건부로 해라",
+    tone: "가능성은 있지만 기준이 필요합니다.",
+    desc: "손실선, 시간, 돈, 관계 리스크를 먼저 정한 뒤 움직이세요.",
+  },
+];
 
-function mulberry32(seed: number) {
-  return function () {
-    let t = (seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+function pickResult(text: string, pressure: number) {
+  const seed =
+    text.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) +
+    pressure * 17 +
+    new Date().getDate();
 
-function shuffle(arr: number[], rand: () => number) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function scoreNumbers(numbers: number[]) {
-  const sum = numbers.reduce((a, b) => a + b, 0);
-  const odd = numbers.filter((n) => n % 2).length;
-  const low = numbers.filter((n) => n <= 22).length;
-  const ranges = new Set(numbers.map((n) => Math.ceil(n / 9))).size;
-
-  let score = 45;
-
-  if (sum >= 95 && sum <= 185) score += 20;
-  if (odd >= 2 && odd <= 4) score += 18;
-  if (low >= 2 && low <= 4) score += 14;
-  if (ranges >= 4) score += 12;
-
-  return Math.min(score, 100);
-}
-
-function generateBalanced(): LottoResult {
-  const seed = hashString(`${Date.now()}-${Math.random()}`);
-  const rand = mulberry32(seed);
-
-  let best: number[] = [];
-  let bestScore = -1;
-
-  for (let i = 0; i < 120; i++) {
-    const r = mulberry32(hashString(`${seed}-${i}-${rand()}`));
-    const candidate = shuffle(
-      Array.from({ length: 45 }, (_, i) => i + 1),
-      r
-    )
-      .slice(0, 6)
-      .sort((a, b) => a - b);
-
-    const s = scoreNumbers(candidate) + r() * 5;
-
-    if (s > bestScore) {
-      best = candidate;
-      bestScore = s;
-    }
-  }
-
-  const pool = Array.from({ length: 45 }, (_, i) => i + 1).filter(
-    (n) => !best.includes(n)
-  );
-
-  const bonus = shuffle(pool, rand)[0];
-
-  return {
-    id: Date.now().toString(),
-    numbers: best,
-    bonus,
-    createdAt: new Date().toISOString(),
-    score: scoreNumbers(best),
-    sum: best.reduce((a, b) => a + b, 0),
-    odd: best.filter((n) => n % 2).length,
-    low: best.filter((n) => n <= 22).length,
-  };
+  return results[seed % results.length];
 }
 
 export default function RandomPage() {
-  const [result, setResult] = useState<LottoResult | null>(null);
-  const [revealed, setRevealed] = useState(0);
-  const [copied, setCopied] = useState(false);
+  const [question, setQuestion] = useState("연락할까 말까");
+  const [pressure, setPressure] = useState(50);
+  const [count, setCount] = useState(0);
 
-  useEffect(() => {
-    const r = generateBalanced();
-    setResult(r);
-  }, []);
+  const result = useMemo(
+    () => pickResult(question + count, pressure),
+    [question, pressure, count]
+  );
 
-  useEffect(() => {
-    if (!result) return;
-
-    setRevealed(0);
-    const timers = Array.from({ length: 7 }, (_, i) =>
-      setTimeout(() => setRevealed(i + 1), 90 * i + 120)
-    );
-
-    return () => timers.forEach(clearTimeout);
-  }, [result]);
-
-  function regenerate() {
-    const r = generateBalanced();
-    setResult(r);
-    setCopied(false);
-  }
-
-  async function copy() {
-    if (!result) return;
-
-    await navigator.clipboard.writeText(
-      `추천 번호: ${result.numbers.join(", ")} + ${result.bonus}`
-    );
-
-    setCopied(true);
-  }
-
-  const even = result ? 6 - result.odd : 0;
-  const high = result ? 6 - result.low : 0;
+  const decisionPower =
+    pressure >= 80
+      ? "판단 과열 상태"
+      : pressure >= 60
+        ? "결정 압박 높음"
+        : pressure >= 40
+          ? "판단 가능 상태"
+          : "여유 있는 상태";
 
   return (
-    <main className="min-h-screen bg-[#0b0b0c] text-white">
-      {/* HEADER */}
-      <header className="border-b border-white/10">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5">
-          <Link href="/" className="font-black">해말아</Link>
+    <main className="min-h-screen bg-[#f7f3ec] px-5 py-8 text-[#17130f]">
+      <div className="mx-auto max-w-6xl">
+        <nav className="mb-10 flex items-center justify-between">
+          <Link href="/" className="text-2xl font-black">
+            해말아
+          </Link>
 
-          <div className="flex gap-6 text-sm text-white/60">
-            <Link href="/dream-lotto">꿈해몽</Link>
-            <Link href="/today">오늘</Link>
-            <Link href="/random" className="text-[#d7b46a]">랜덤</Link>
+          <div className="flex gap-2">
+            <Link
+              href="/test/play"
+              className="rounded-full bg-black px-5 py-3 text-sm font-black text-white"
+            >
+              성향테스트
+            </Link>
           </div>
-        </div>
-      </header>
+        </nav>
 
-      {/* HERO */}
-      <section className="mx-auto max-w-7xl px-5 py-20">
-        <h1 className="text-7xl font-black tracking-[-0.08em] leading-[0.9]">
-          빠르게,
-          <br />
-          그러나 균형 있게.
-        </h1>
+        <section className="grid gap-8 md:grid-cols-[1fr_0.9fr] md:items-center">
+          <div>
+            <div className="mb-5 inline-flex rounded-full border border-black/10 bg-white/80 px-4 py-2 text-sm font-black text-black/50">
+              QUICK DECISION TOOL
+            </div>
 
-        <p className="mt-6 text-white/50 max-w-xl">
-          무작위 후보를 여러 번 생성한 뒤, 균형이 좋은 조합만 선별합니다.
-        </p>
-      </section>
+            <h1 className="text-5xl font-black leading-tight tracking-tight md:text-7xl">
+              생각이 너무 많을 때,
+              <br />
+              한 번 끊어주는
+              <br />
+              랜덤 결정기.
+            </h1>
 
-      {/* RESULT */}
-      <section className="mx-auto max-w-7xl px-5 pb-20">
-        <div className="rounded-[2rem] bg-white text-black p-8 shadow-xl">
-
-          <div className="flex justify-between">
-            <h2 className="text-4xl font-black">랜덤 리포트</h2>
-            <div className="font-black">{result?.score}/100</div>
+            <p className="mt-6 max-w-2xl text-lg font-semibold leading-8 text-black/60">
+              진짜 중요한 결정은 성향테스트와 시뮬레이터로 가고, 지금처럼
+              머리가 복잡할 때는 랜덤 결정기로 판단 과부하를 끊으세요.
+            </p>
           </div>
 
-          {/* numbers */}
-          <div className="flex gap-3 mt-8 flex-wrap">
-            {result?.numbers.map((n, i) => (
-              <div
-                key={n}
-                className={`w-16 h-16 flex items-center justify-center rounded-xl text-xl font-black transition ${
-                  revealed > i
-                    ? "bg-black text-white"
-                    : "bg-black/10 text-transparent"
-                }`}
+          <div className="rounded-[2.5rem] border border-black/10 bg-white p-5 shadow-2xl shadow-black/10">
+            <div className="rounded-[2rem] bg-black p-7 text-white">
+              <p className="text-sm font-black text-white/45">RANDOM VERDICT</p>
+              <h2 className="mt-4 text-6xl font-black">{result.verdict}</h2>
+              <p className="mt-5 text-xl font-black leading-8 text-white/85">
+                {result.tone}
+              </p>
+              <p className="mt-3 leading-7 text-white/65">{result.desc}</p>
+
+              <button
+                onClick={() => setCount((v) => v + 1)}
+                className="mt-8 w-full rounded-2xl bg-white px-6 py-5 font-black text-black transition hover:-translate-y-0.5"
               >
-                {n}
-              </div>
+                다시 판정하기
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10 rounded-[2rem] border border-black/10 bg-white/80 p-6 shadow-sm md:p-8">
+          <p className="text-sm font-black text-black/40">내 고민 입력</p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="예: 연락할까 말까"
+              className="rounded-2xl border border-black/10 bg-[#f7f3ec] px-5 py-4 text-lg font-black outline-none"
+            />
+
+            <button
+              onClick={() => setCount((v) => v + 1)}
+              className="rounded-2xl bg-black px-7 py-4 font-black text-white"
+            >
+              판정
+            </button>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            {presets.map((item) => (
+              <button
+                key={item}
+                onClick={() => {
+                  setQuestion(item);
+                  setCount((v) => v + 1);
+                }}
+                className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-black text-black/60 transition hover:bg-black hover:text-white"
+              >
+                {item}
+              </button>
             ))}
-            <div className={`w-16 h-16 flex items-center justify-center rounded-xl border ${
-              revealed > 6 ? "opacity-100" : "opacity-0"
-            }`}>
-              +{result?.bonus}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-[2rem] border border-black/10 bg-white p-6 shadow-sm md:p-8">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-black text-black/40">결정 압박 지수</p>
+              <h2 className="mt-2 text-3xl font-black">{decisionPower}</h2>
             </div>
+
+            <p className="text-4xl font-black">{pressure}%</p>
           </div>
 
-          {/* stats */}
-          <div className="grid grid-cols-3 gap-4 mt-8">
-            <div>
-              <p className="text-xs text-black/40">합계</p>
-              <p className="text-2xl font-black">{result?.sum}</p>
-            </div>
-            <div>
-              <p className="text-xs text-black/40">홀짝</p>
-              <p className="text-2xl font-black">{result?.odd}:{even}</p>
-            </div>
-            <div>
-              <p className="text-xs text-black/40">저고</p>
-              <p className="text-2xl font-black">{result?.low}:{high}</p>
-            </div>
-          </div>
-
-          {/* actions */}
-          <div className="grid grid-cols-2 gap-3 mt-10">
-            <button
-              onClick={regenerate}
-              className="bg-black text-white py-4 rounded-full font-black"
-            >
-              다시 생성
-            </button>
-
-            <button
-              onClick={copy}
-              className="bg-black/10 py-4 rounded-full font-black"
-            >
-              {copied ? "복사 완료" : "복사"}
-            </button>
-          </div>
-
-          <ShareResultButtons
-            targetId="random-result-card"
-            fileName="random"
-            shareText={`번호: ${result?.numbers.join(", ")}`}
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={pressure}
+            onChange={(e) => setPressure(Number(e.target.value))}
+            className="mt-6 w-full"
           />
-        </div>
-      </section>
 
-      {/* CTA */}
-      <section className="bg-[#d7b46a] text-black py-16 text-center">
-        <h2 className="text-4xl font-black">
-          더 개인적인 결과를 원한다면
-        </h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl bg-[#f7f3ec] p-4">
+              <p className="text-sm font-black text-black/40">낮음</p>
+              <p className="mt-1 text-sm font-bold text-black/55">
+                충분히 생각할 여유가 있음
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[#f7f3ec] p-4">
+              <p className="text-sm font-black text-black/40">중간</p>
+              <p className="mt-1 text-sm font-bold text-black/55">
+                빠른 기준 정리가 필요함
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[#f7f3ec] p-4">
+              <p className="text-sm font-black text-black/40">높음</p>
+              <p className="mt-1 text-sm font-bold text-black/55">
+                즉흥 결정 위험이 있음
+              </p>
+            </div>
+          </div>
+        </section>
 
-        <Link
-          href="/dream-lotto"
-          className="mt-6 inline-block bg-black text-white px-8 py-4 rounded-full font-black"
-        >
-          꿈 해몽 번호
-        </Link>
-      </section>
+        <section className="mt-10 grid gap-4 md:grid-cols-3">
+          {[
+            {
+              title: "진짜 중요한 선택인가?",
+              desc: "돈, 관계, 커리어가 걸려 있다면 랜덤 말고 시뮬레이터로 가세요.",
+              href: "/simulate",
+              cta: "시뮬레이터 열기",
+            },
+            {
+              title: "내 패턴이 궁금한가?",
+              desc: "왜 매번 같은 고민을 반복하는지 성향테스트로 확인하세요.",
+              href: "/test/play",
+              cta: "성향테스트 하기",
+            },
+            {
+              title: "오늘 운이 궁금한가?",
+              desc: "오늘 밀어붙일 선택과 피해야 할 선택을 확인하세요.",
+              href: "/today",
+              cta: "오늘의 결정운",
+            },
+          ].map((card) => (
+            <Link
+              key={card.title}
+              href={card.href}
+              className="rounded-[2rem] border border-black/10 bg-white/80 p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl hover:shadow-black/10"
+            >
+              <h3 className="text-2xl font-black">{card.title}</h3>
+              <p className="mt-3 leading-7 text-black/60">{card.desc}</p>
+              <p className="mt-6 text-sm font-black">{card.cta} →</p>
+            </Link>
+          ))}
+        </section>
+
+        <section className="mt-10 rounded-[2.5rem] bg-black p-7 text-white shadow-2xl shadow-black/15 md:p-10">
+          <p className="text-sm font-black text-white/45">주의</p>
+          <h2 className="mt-3 text-3xl font-black md:text-5xl">
+            랜덤 결정기는 가벼운 선택용입니다.
+          </h2>
+          <p className="mt-5 max-w-3xl leading-7 text-white/65">
+            중요한 선택은 랜덤으로 결정하지 마세요. 해말아의 핵심은 무작위가
+            아니라, 성향과 상황을 보고 선택을 더 선명하게 만드는 것입니다.
+          </p>
+
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/test/play"
+              className="rounded-2xl bg-white px-7 py-4 text-center font-black text-black"
+            >
+              성향테스트로 제대로 보기
+            </Link>
+            <Link
+              href="/simulate"
+              className="rounded-2xl border border-white/15 bg-white/10 px-7 py-4 text-center font-black text-white"
+            >
+              지금 선택 시뮬레이션
+            </Link>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
