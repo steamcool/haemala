@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 
 type PickSet = {
@@ -21,6 +21,15 @@ type PickSet = {
     spread: number;
   };
 };
+
+type HistoryItem = {
+  id: string;
+  dream: string;
+  createdAt: string;
+  picks: PickSet[];
+};
+
+const STORAGE_KEY = "haemala_history_v2";
 
 const DREAM_TAGS = [
   { key: "물", label: "흐름", tone: "감정·재물 흐름" },
@@ -51,6 +60,12 @@ const MOODS = [
   "숨은 운 발견형",
 ];
 
+const EXAMPLE_DREAMS = [
+  "큰 바다 위에 금빛 문이 열리고 밝은 빛이 나왔어요.",
+  "낯선 길을 걷다가 돈다발을 발견했는데 하늘이 노랗게 빛났어요.",
+  "비 오는 밤에 오래된 집 안에서 흰 동물이 저를 바라봤어요.",
+];
+
 function hashText(text: string) {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) {
@@ -79,12 +94,15 @@ function hasWeakPattern(nums: number[]) {
   const consecutive = sorted.filter((n, i) => i > 0 && n === sorted[i - 1] + 1).length;
   const sum = sorted.reduce((a, b) => a + b, 0);
   const odd = sorted.filter((n) => n % 2 === 1).length;
+
   const zoneMap = sorted.reduce<Record<number, number>>((acc, n) => {
     const zone = Math.floor((n - 1) / 10);
     acc[zone] = (acc[zone] || 0) + 1;
     return acc;
   }, {});
+
   const maxZone = Math.max(...Object.values(zoneMap));
+
   return consecutive >= 3 || sum < 85 || sum > 190 || odd === 0 || odd === 6 || maxZone >= 5;
 }
 
@@ -131,9 +149,11 @@ function createPick(dream: string, index: number): PickSet {
   while (hasWeakPattern(numbers) && repair < 100) {
     const temp = new Set(numbers);
     temp.delete(numbers[cryptoRand(numbers.length)]);
+
     while (temp.size < 6) {
       temp.add(weightedNumber(seed + cryptoRand(999999), dream, temp));
     }
+
     numbers = normalize([...temp]);
     repair++;
   }
@@ -187,7 +207,7 @@ function createPick(dream: string, index: number): PickSet {
 
 function getSignals(dream: string) {
   const found = DREAM_TAGS.filter((x) => dream.includes(x.key));
-  return found.length ? found.slice(0, 5) : DREAM_TAGS.slice(0, 3);
+  return found.length ? found.slice(0, 5) : DREAM_TAGS.slice(0, 4);
 }
 
 function Ball({ n }: { n: number }) {
@@ -199,33 +219,120 @@ function Ball({ n }: { n: number }) {
   );
 }
 
+function AdSlot({ label = "ADVERTISEMENT" }: { label?: string }) {
+  return (
+    <div className="rounded-[1.5rem] border border-dashed border-amber-300/25 bg-black/25 p-5 text-center">
+      <p className="text-[10px] font-black tracking-[0.35em] text-amber-200/60">{label}</p>
+      <div className="mt-3 grid min-h-[90px] place-items-center rounded-2xl bg-white/[0.035] px-4">
+        <p className="text-xs font-bold leading-5 text-zinc-500">
+          광고 영역
+          <br />
+          Google AdSense 승인 후 이 위치에 광고 코드를 삽입
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [dream, setDream] = useState("");
   const [picks, setPicks] = useState<PickSet[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
+
   const signals = useMemo(() => getSignals(dream), [dream]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  const saveHistory = (next: HistoryItem) => {
+    const updated = [next, ...history].slice(0, 8);
+    setHistory(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  };
 
   const generate = () => {
     if (!dream.trim()) return;
+
     setLoading(true);
+
     setTimeout(() => {
-      setPicks(Array.from({ length: 5 }, (_, i) => createPick(dream.trim(), i)));
+      const nextPicks = Array.from({ length: 5 }, (_, i) => createPick(dream.trim(), i));
+      setPicks(nextPicks);
+
+      saveHistory({
+        id: crypto.randomUUID(),
+        dream: dream.trim(),
+        createdAt: new Date().toISOString(),
+        picks: nextPicks,
+      });
+
       setLoading(false);
-    }, 550);
+      setTimeout(() => {
+        document.getElementById("result")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }, 650);
   };
 
   const saveImage = async () => {
     if (!resultRef.current) return;
+
     const canvas = await html2canvas(resultRef.current, {
       backgroundColor: "#09090b",
       scale: 2,
       useCORS: true,
     });
+
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
-    link.download = `haemala-premium-${Date.now()}.png`;
+    link.download = `haemala-result-${Date.now()}.png`;
     link.click();
+  };
+
+  const shareService = async () => {
+    const text = "꿈을 로또 번호로 번역해주는 해말아에서 오늘의 번호 리포트를 뽑아봤어요.";
+    const url = typeof window !== "undefined" ? window.location.href : "https://www.haemala.com";
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "해말아 - 꿈 번호 리포트",
+          text,
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1600);
+      }
+    } catch {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  };
+
+  const loadHistory = (item: HistoryItem) => {
+    setDream(item.dream);
+    setPicks(item.picks);
+    setTimeout(() => {
+      document.getElementById("result")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (
@@ -242,11 +349,11 @@ export default function Home() {
               HAEMALA PREMIUM READING
             </span>
             <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300">
-              DB 없음 · 무료 · 이미지 저장 가능
+              DB 없음 · 무료 · 공유 가능 · 이미지 저장
             </span>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
+          <div className="grid gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-end">
             <div>
               <h1 className="text-5xl font-black tracking-[-0.06em] text-white sm:text-7xl lg:text-8xl">
                 해말아
@@ -254,26 +361,51 @@ export default function Home() {
                   꿈을 번호로 번역하다
                 </span>
               </h1>
-              <p className="mt-6 max-w-3xl text-base font-semibold leading-8 text-zinc-300 sm:text-lg">
-                입력한 꿈의 상징, 현재 보안 난수, 번호 분산, 홀짝 균형, 합계 안정성,
-                구간 편향 회피를 결합해 매번 다른 번호 리포트를 생성합니다.
+
+              <p className="mt-6 max-w-3xl text-lg font-black leading-8 text-amber-100 sm:text-2xl">
+                지금 이 순간, 당신의 꿈은 어떤 번호로 번역될까?
               </p>
+
+              <p className="mt-4 max-w-3xl text-base font-semibold leading-8 text-zinc-300 sm:text-lg">
+                꿈의 상징, 보안 난수, 번호 분산, 홀짝 균형, 합계 안정성, 구간 편향 회피를 결합해
+                매번 다른 번호 리포트를 생성합니다.
+              </p>
+
+              <div className="mt-7 flex flex-wrap gap-3">
+                <button
+                  onClick={() => document.getElementById("input")?.scrollIntoView({ behavior: "smooth" })}
+                  className="rounded-2xl bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600 px-5 py-3 text-sm font-black text-black shadow-[0_12px_35px_rgba(250,204,21,0.25)]"
+                >
+                  지금 번호 뽑기
+                </button>
+
+                <button
+                  onClick={shareService}
+                  className="rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-3 text-sm font-black text-white"
+                >
+                  {copied ? "링크 복사됨" : "친구에게 공유"}
+                </button>
+              </div>
             </div>
 
-            <div className="rounded-[1.7rem] border border-amber-300/20 bg-black/30 p-5">
-              <p className="text-sm font-black text-amber-200">오늘의 리딩 방식</p>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                {["꿈 신호", "분산 보정", "패턴 제거", "이미지 저장"].map((x) => (
-                  <div key={x} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 font-bold">
-                    {x}
-                  </div>
-                ))}
+            <div className="grid gap-4">
+              <div className="rounded-[1.7rem] border border-amber-300/20 bg-black/30 p-5">
+                <p className="text-sm font-black text-amber-200">수익화 구조</p>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  {["검색 유입", "결과 체류", "이미지 공유", "광고 노출"].map((x) => (
+                    <div key={x} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 font-bold">
+                      {x}
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              <AdSlot label="TOP AD SLOT" />
             </div>
           </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+        <section id="input" className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 shadow-2xl backdrop-blur-xl sm:p-7">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -291,6 +423,18 @@ export default function Home() {
               placeholder="예: 낯선 바닷가에서 금빛 문을 열었고, 안쪽에 돈과 밝은 빛이 보였어요."
               className="mt-5 min-h-[240px] w-full resize-none rounded-[1.5rem] border border-amber-300/20 bg-black/35 p-5 text-base font-semibold leading-7 text-white outline-none placeholder:text-zinc-500 focus:border-amber-300/70 focus:shadow-[0_0_40px_rgba(250,204,21,0.12)]"
             />
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {EXAMPLE_DREAMS.map((x, i) => (
+                <button
+                  key={x}
+                  onClick={() => setDream(x)}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-zinc-300"
+                >
+                  예시 {i + 1}
+                </button>
+              ))}
+            </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
               {signals.map((s) => (
@@ -313,15 +457,15 @@ export default function Home() {
           </div>
 
           <aside className="rounded-[2rem] border border-amber-300/15 bg-black/35 p-5 shadow-2xl backdrop-blur-xl sm:p-7">
-            <p className="text-sm font-black text-amber-200">QUALITY ENGINE</p>
-            <h2 className="mt-1 text-2xl font-black">패턴형 추천 제거 로직</h2>
+            <p className="text-sm font-black text-amber-200">RETENTION ENGINE</p>
+            <h2 className="mt-1 text-2xl font-black">다시 들어오게 만드는 장치</h2>
 
             <div className="mt-6 space-y-4">
               {[
-                ["고정표 배제", "입력 문장과 실시간 보안 난수를 섞어 같은 꿈도 다른 결과를 만듭니다."],
-                ["분산 검사", "특정 번호대에 몰리는 조합을 감지하고 다시 보정합니다."],
-                ["극단값 회피", "합계가 지나치게 낮거나 높은 조합은 리포트에서 제외합니다."],
-                ["근거 생성", "각 조합마다 합계·홀짝·저고·간격을 따로 설명합니다."],
+                ["결과 히스토리", "최근 리포트를 브라우저에 저장합니다. DB 없이 재방문 경험을 만듭니다."],
+                ["공유 CTA", "결과 저장과 링크 공유로 SNS 유입 흐름을 만듭니다."],
+                ["광고 슬롯", "AdSense 승인 후 상단·중단·하단에 광고를 배치할 수 있습니다."],
+                ["체류 구조", "번호만 보여주지 않고 해석 카드와 균형 지표를 함께 보여줍니다."],
               ].map(([a, b]) => (
                 <div key={a} className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-5">
                   <p className="font-black text-white">{a}</p>
@@ -329,101 +473,169 @@ export default function Home() {
                 </div>
               ))}
             </div>
-
-            <p className="mt-5 rounded-[1.4rem] border border-amber-300/20 bg-amber-300/10 p-4 text-sm font-bold leading-6 text-amber-100">
-              로또는 확률 게임입니다. 이 서비스는 당첨 보장이 아니라 재미, 해석, 체류 경험을 위한 운세형 콘텐츠입니다.
-            </p>
           </aside>
         </section>
 
         {picks.length > 0 && (
-          <section
-            ref={resultRef}
-            className="rounded-[2rem] border border-amber-300/20 bg-[#09090b] p-5 shadow-2xl sm:p-8"
-          >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-black text-amber-200">RESULT REPORT</p>
-                <h2 className="mt-1 text-3xl font-black sm:text-4xl">오늘의 꿈 번호 리포트</h2>
-                <p className="mt-2 text-sm font-semibold text-zinc-400">
-                  꿈 신호 기반 추천 5조합 · 보너스 후보 포함
-                </p>
+          <section id="result" className="grid gap-6 lg:grid-cols-[1fr_320px]">
+            <div
+              ref={resultRef}
+              className="rounded-[2rem] border border-amber-300/20 bg-[#09090b] p-5 shadow-2xl sm:p-8"
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-sm font-black text-amber-200">RESULT REPORT</p>
+                  <h2 className="mt-1 text-3xl font-black sm:text-4xl">오늘의 꿈 번호 리포트</h2>
+                  <p className="mt-2 text-sm font-semibold text-zinc-400">
+                    꿈 신호 기반 추천 5조합 · 보너스 후보 포함
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={saveImage}
+                    className="rounded-2xl border border-amber-300/30 bg-amber-300 px-5 py-3 text-sm font-black text-black shadow-[0_12px_35px_rgba(250,204,21,0.25)]"
+                  >
+                    이미지 저장
+                  </button>
+                  <button
+                    onClick={shareService}
+                    className="rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-3 text-sm font-black text-white"
+                  >
+                    공유
+                  </button>
+                </div>
               </div>
 
-              <button
-                onClick={saveImage}
-                className="rounded-2xl border border-amber-300/30 bg-amber-300 px-5 py-3 text-sm font-black text-black shadow-[0_12px_35px_rgba(250,204,21,0.25)]"
-              >
-                결과 이미지 저장
-              </button>
+              <div className="mt-7 grid gap-5">
+                {picks.map((pick) => (
+                  <article
+                    key={pick.id}
+                    className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.055]"
+                  >
+                    <div className="border-b border-white/10 bg-gradient-to-r from-white/[0.08] to-amber-300/[0.08] p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <h3 className="text-xl font-black text-white">{pick.title}</h3>
+                          <p className="mt-2 text-sm font-semibold text-zinc-400">{pick.summary}</p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-center">
+                            <p className="text-xs font-black text-amber-200">해석 점수</p>
+                            <p className="text-2xl font-black text-amber-300">{pick.score}</p>
+                          </div>
+                          <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-center">
+                            <p className="text-xs font-black text-zinc-400">보너스</p>
+                            <p className="text-2xl font-black text-white">{pick.bonus}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex flex-wrap gap-3">
+                        {pick.numbers.map((n) => (
+                          <Ball key={n} n={n} />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 p-5 lg:grid-cols-[0.8fr_1.2fr]">
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          ["합계", pick.balance.sum],
+                          ["홀짝", `${pick.balance.odd}:${pick.balance.even}`],
+                          ["저고", `${pick.balance.low}:${pick.balance.high}`],
+                          ["간격", pick.balance.spread],
+                        ].map(([a, b]) => (
+                          <div key={a} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                            <p className="text-xs font-black text-zinc-500">{a}</p>
+                            <p className="mt-1 text-xl font-black text-white">{b}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {pick.reason.map((r) => (
+                          <p
+                            key={r}
+                            className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm font-semibold leading-6 text-zinc-300"
+                          >
+                            {r}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
             </div>
 
-            <div className="mt-7 grid gap-5">
-              {picks.map((pick) => (
-                <article
-                  key={pick.id}
-                  className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.055]"
+            <aside className="grid gap-5 content-start">
+              <AdSlot label="RESULT AD SLOT" />
+
+              <div className="rounded-[1.5rem] border border-amber-300/20 bg-amber-300/10 p-5">
+                <p className="text-lg font-black text-amber-100">친구도 꿈 번호 뽑게 하기</p>
+                <p className="mt-2 text-sm font-semibold leading-6 text-zinc-300">
+                  결과 이미지를 저장해서 카톡, 인스타, 커뮤니티에 공유하면 자연 유입이 생깁니다.
+                </p>
+                <button
+                  onClick={shareService}
+                  className="mt-4 w-full rounded-2xl bg-amber-300 px-4 py-3 text-sm font-black text-black"
                 >
-                  <div className="border-b border-white/10 bg-gradient-to-r from-white/[0.08] to-amber-300/[0.08] p-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <h3 className="text-xl font-black text-white">{pick.title}</h3>
-                        <p className="mt-2 text-sm font-semibold text-zinc-400">{pick.summary}</p>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-center">
-                          <p className="text-xs font-black text-amber-200">해석 점수</p>
-                          <p className="text-2xl font-black text-amber-300">{pick.score}</p>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-center">
-                          <p className="text-xs font-black text-zinc-400">보너스</p>
-                          <p className="text-2xl font-black text-white">{pick.bonus}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-3">
-                      {pick.numbers.map((n) => (
-                        <Ball key={n} n={n} />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 p-5 lg:grid-cols-[0.8fr_1.2fr]">
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        ["합계", pick.balance.sum],
-                        ["홀짝", `${pick.balance.odd}:${pick.balance.even}`],
-                        ["저고", `${pick.balance.low}:${pick.balance.high}`],
-                        ["간격", pick.balance.spread],
-                      ].map(([a, b]) => (
-                        <div key={a} className="rounded-2xl border border-white/10 bg-black/25 p-4">
-                          <p className="text-xs font-black text-zinc-500">{a}</p>
-                          <p className="mt-1 text-xl font-black text-white">{b}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {pick.reason.map((r) => (
-                        <p
-                          key={r}
-                          className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm font-semibold leading-6 text-zinc-300"
-                        >
-                          {r}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+                  링크 공유하기
+                </button>
+              </div>
+            </aside>
           </section>
         )}
 
-        <footer className="pb-6 text-center text-xs font-bold text-zinc-500">
+        <section className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5 shadow-2xl backdrop-blur-xl sm:p-7">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-black text-amber-200">LOCAL HISTORY</p>
+                <h2 className="mt-1 text-2xl font-black">최근 리포트</h2>
+              </div>
+
+              {history.length > 0 && (
+                <button
+                  onClick={clearHistory}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-zinc-400"
+                >
+                  삭제
+                </button>
+              )}
+            </div>
+
+            {history.length === 0 ? (
+              <p className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-5 text-sm font-semibold text-zinc-500">
+                아직 저장된 리포트가 없습니다. 번호를 생성하면 이 브라우저에 최근 결과가 저장됩니다.
+              </p>
+            ) : (
+              <div className="mt-5 grid gap-3">
+                {history.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => loadHistory(item)}
+                    className="rounded-2xl border border-white/10 bg-black/25 p-4 text-left transition hover:border-amber-300/40"
+                  >
+                    <p className="line-clamp-1 text-sm font-black text-white">{item.dream}</p>
+                    <p className="mt-2 text-xs font-bold text-zinc-500">
+                      {new Date(item.createdAt).toLocaleString("ko-KR")} · 다시 보기
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <AdSlot label="BOTTOM AD SLOT" />
+        </section>
+
+        <footer className="pb-6 text-center text-xs font-bold leading-6 text-zinc-500">
           HAEMALA · 무료 운세형 번호 리딩 서비스 · 당첨 보장 없음
+          <br />
+          본 서비스는 오락용 콘텐츠이며, 복권 구매 또는 당첨을 보장하지 않습니다.
         </footer>
       </section>
     </main>
