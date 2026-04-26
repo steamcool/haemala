@@ -1,359 +1,582 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import ShareResultButtons from "../components/ShareResultButtons";
 
-type LottoSet = {
+type DreamResult = {
   id: string;
-  title: string;
+  dream: string;
   numbers: number[];
   bonus: number;
-  reason: string;
-  tone: string;
+  symbol: string;
+  emotion: string;
+  theme: string;
+  score: number;
+  summary: string;
+  detail: string;
+  createdAt: string;
 };
 
-type DreamSignal = {
-  label: string;
-  weight: number;
-  desc: string;
-};
+const STORAGE_KEY = "haemala_dream_history_v2";
 
-const DREAM_KEYWORDS: Record<string, DreamSignal> = {
-  돼지: { label: "재물운", weight: 9, desc: "재물·횡재 상징이 강한 꿈" },
-  똥: { label: "횡재운", weight: 10, desc: "전통적으로 강한 금전 상징" },
-  물: { label: "흐름운", weight: 7, desc: "기회와 이동, 변화의 흐름" },
-  바다: { label: "확장운", weight: 8, desc: "큰 판, 큰 변화, 장기운" },
-  불: { label: "상승운", weight: 8, desc: "에너지·성과·주목의 상징" },
-  돈: { label: "금전운", weight: 9, desc: "직접적인 재물 심상" },
-  금: { label: "귀인운", weight: 9, desc: "가치·성과·인정의 상징" },
-  용: { label: "대운", weight: 10, desc: "강한 상승과 전환의 상징" },
-  뱀: { label: "변화운", weight: 8, desc: "전환·재생·기민함의 상징" },
-  피: { label: "생명운", weight: 7, desc: "강한 에너지와 회복의 심상" },
-  아기: { label: "시작운", weight: 7, desc: "새로운 기회와 출발" },
-  집: { label: "기반운", weight: 6, desc: "안정·기초·생활 기반" },
-  산: { label: "성취운", weight: 7, desc: "목표·극복·성취의 상징" },
-  하늘: { label: "상승운", weight: 7, desc: "시야 확장과 높은 목표" },
-  조상: { label: "보호운", weight: 8, desc: "조언·보호·기억의 심상" },
-  대통령: { label: "권위운", weight: 8, desc: "권위·승진·사회적 인정" },
-  연예인: { label: "인기운", weight: 6, desc: "주목·표현·외부 평가" },
-  죽음: { label: "전환운", weight: 8, desc: "끝과 새 시작의 상징" },
-  결혼: { label: "결합운", weight: 7, desc: "계약·연결·관계 확장" },
-  비행기: { label: "도약운", weight: 8, desc: "이동·상승·큰 변화" },
-};
+const symbolRules = [
+  {
+    keys: ["물", "바다", "강", "비", "파도", "수영"],
+    symbol: "흐름",
+    emotion: "정화",
+    theme: "감정이 정리되는 꿈",
+    base: [3, 8, 12, 19, 27, 36],
+  },
+  {
+    keys: ["돈", "지갑", "금", "보석", "동전", "복권"],
+    symbol: "기회",
+    emotion: "기대",
+    theme: "가능성이 커지는 꿈",
+    base: [7, 11, 18, 24, 33, 42],
+  },
+  {
+    keys: ["불", "화재", "태양", "빛", "촛불"],
+    symbol: "전환",
+    emotion: "에너지",
+    theme: "변화가 강한 꿈",
+    base: [1, 9, 16, 25, 34, 45],
+  },
+  {
+    keys: ["하늘", "날다", "비행", "새", "구름"],
+    symbol: "확장",
+    emotion: "자유",
+    theme: "시야가 넓어지는 꿈",
+    base: [5, 14, 21, 28, 37, 44],
+  },
+  {
+    keys: ["집", "방", "문", "가족", "침대"],
+    symbol: "안정",
+    emotion: "회복",
+    theme: "내면을 정돈하는 꿈",
+    base: [4, 10, 17, 22, 31, 40],
+  },
+  {
+    keys: ["길", "차", "버스", "기차", "여행", "역"],
+    symbol: "이동",
+    emotion: "선택",
+    theme: "방향을 고르는 꿈",
+    base: [2, 13, 20, 29, 35, 43],
+  },
+  {
+    keys: ["사람", "친구", "연인", "아이", "아기", "동물"],
+    symbol: "관계",
+    emotion: "연결",
+    theme: "관계의 신호가 있는 꿈",
+    base: [6, 15, 23, 30, 38, 41],
+  },
+];
 
-const luckyAnchors = [3, 7, 8, 9, 11, 14, 17, 21, 23, 27, 31, 33, 37, 40, 42, 44];
+function makeSeed(text: string) {
+  return Array.from(text).reduce(
+    (sum, char, index) => sum + char.charCodeAt(0) * (index + 7),
+    173
+  );
+}
 
-function hashString(input: string) {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+function seededRandom(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+function pickRule(dream: string) {
+  const text = dream.replace(/\s+/g, "").toLowerCase();
+
+  return (
+    symbolRules.find((rule) => rule.keys.some((key) => text.includes(key))) ?? {
+      keys: [],
+      symbol: "직감",
+      emotion: "탐색",
+      theme: "의미를 찾아가는 꿈",
+      base: [6, 12, 19, 26, 32, 39],
+    }
+  );
+}
+
+function createNumbers(dream: string, base: number[]) {
+  const seed = makeSeed(dream);
+  const selected = new Set<number>();
+
+  base.forEach((num, index) => {
+    const shift = Math.floor(seededRandom(seed + index * 13) * 11);
+    selected.add(((num + shift - 1) % 45) + 1);
+  });
+
+  let cursor = seed;
+
+  while (selected.size < 6) {
+    cursor += 23;
+    selected.add(Math.floor(seededRandom(cursor) * 45) + 1);
   }
-  return h >>> 0;
-}
 
-function mulberry32(seed: number) {
-  return function () {
-    let t = (seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pickUnique(
-  rng: () => number,
-  count: number,
-  bias: number[],
-  avoid: number[] = []
-) {
-  const result = new Set<number>();
-  const avoidSet = new Set(avoid);
-
-  while (result.size < count) {
-    const useBias = rng() < 0.45 && bias.length > 0;
-    const raw = useBias
-      ? bias[Math.floor(rng() * bias.length)]
-      : Math.floor(rng() * 45) + 1;
-
-    const n = Math.min(45, Math.max(1, raw));
-
-    if (!avoidSet.has(n)) result.add(n);
-  }
-
-  return Array.from(result).sort((a, b) => a - b);
-}
-
-function analyzeDream(text: string) {
-  const clean = text.trim();
-  const found = Object.entries(DREAM_KEYWORDS)
-    .filter(([key]) => clean.includes(key))
-    .map(([key, value]) => ({ key, ...value }))
-    .sort((a, b) => b.weight - a.weight);
-
-  const score = Math.min(
-    100,
-    Math.max(38, found.reduce((sum, item) => sum + item.weight * 7, 34))
+  const numbers = Array.from(selected).slice(0, 6).sort((a, b) => a - b);
+  const pool = Array.from({ length: 45 }, (_, i) => i + 1).filter(
+    (n) => !numbers.includes(n)
   );
 
-  const main = found[0] ?? {
-    key: "직감",
-    label: "직감운",
-    weight: 5,
-    desc: "꿈의 구체적 분위기와 개인적 직감 중심",
-  };
+  const bonus = pool[Math.floor(seededRandom(seed + 911) * pool.length)];
 
-  return { found, score, main };
+  return { numbers, bonus };
 }
 
-function makeLottoSets(text: string): LottoSet[] {
-  const baseSeed = hashString(`${text}|haemala-dream-lotto|2026`);
-  const analysis = analyzeDream(text);
-  const keywordBias = analysis.found.flatMap((item) => {
-    const h = hashString(item.key + item.label);
-    return [
-      (h % 45) + 1,
-      ((h >>> 3) % 45) + 1,
-      luckyAnchors[(h >>> 5) % luckyAnchors.length],
-    ];
-  });
+function getScore(numbers: number[]) {
+  const sum = numbers.reduce((a, b) => a + b, 0);
+  const odd = numbers.filter((n) => n % 2 === 1).length;
+  const range = new Set(numbers.map((n) => Math.ceil(n / 9))).size;
 
-  const bias = [...new Set([...keywordBias, ...luckyAnchors])];
+  let score = 45;
+  if (sum >= 95 && sum <= 185) score += 25;
+  if (odd >= 2 && odd <= 4) score += 18;
+  if (range >= 4) score += 12;
 
-  const names = [
-    "꿈기운 핵심 조합",
-    "재물 흐름 보강 조합",
-    "반전운 균형 조합",
-    "고점 노림수 조합",
-    "안정형 분산 조합",
-  ];
+  return Math.min(score, 100);
+}
 
-  return names.map((title, idx) => {
-    const rng = mulberry32(baseSeed + idx * 99991 + 77);
-    const numbers = pickUnique(rng, 6, bias);
-    const bonus = pickUnique(rng, 1, bias, numbers)[0];
+function generateDreamResult(dream: string): DreamResult {
+  const rule = pickRule(dream);
+  const { numbers, bonus } = createNumbers(dream, rule.base);
+  const score = getScore(numbers);
 
-    const tones = [
-      "핵심 상징을 가장 강하게 반영한 조합입니다.",
-      "금전·기회 흐름을 넓게 분산한 조합입니다.",
-      "낮은 수와 높은 수의 균형을 의도한 조합입니다.",
-      "꿈의 강한 이미지를 공격적으로 반영한 조합입니다.",
-      "과열을 줄이고 안정감을 높인 조합입니다.",
-    ];
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    dream,
+    numbers,
+    bonus,
+    symbol: rule.symbol,
+    emotion: rule.emotion,
+    theme: rule.theme,
+    score,
+    summary: `${rule.symbol}의 상징이 중심에 있는 꿈입니다.`,
+    detail: `이 꿈은 '${rule.symbol}'과 '${rule.emotion}'의 흐름으로 해석됩니다. 번호는 꿈의 핵심 단어, 문장 길이, 문자 패턴, 구간 균형을 함께 반영해 생성했습니다. 결과는 당첨 예측이 아니라 꿈을 번호 리포트로 바꾸는 오락·참고용 콘텐츠입니다.`,
+    createdAt: new Date().toISOString(),
+  };
+}
 
-    return {
-      id: `${baseSeed}-${idx}`,
-      title,
-      numbers,
-      bonus,
-      tone: tones[idx],
-      reason: `${analysis.main.label}을 중심으로 홀짝, 고저, 구간 분산을 섞었습니다.`,
-    };
-  });
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function getNumberMeaning(num: number) {
+  if (num <= 9) return "시작";
+  if (num <= 18) return "전개";
+  if (num <= 27) return "중심";
+  if (num <= 36) return "확장";
+  return "완성";
 }
 
 export default function DreamLottoPage() {
   const [dream, setDream] = useState("");
-  const [submitted, setSubmitted] = useState("");
+  const [result, setResult] = useState<DreamResult | null>(null);
+  const [history, setHistory] = useState<DreamResult[]>([]);
+  const [copied, setCopied] = useState(false);
 
-  const analysis = useMemo(() => analyzeDream(submitted), [submitted]);
-  const sets = useMemo(
-    () => (submitted ? makeLottoSets(submitted) : []),
-    [submitted]
-  );
+  const canGenerate = dream.trim().length >= 2;
 
-  const canSubmit = dream.trim().length >= 2;
+  useEffect(() => {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved).slice(0, 5);
+      setHistory(parsed);
+      if (parsed[0]) {
+        setResult(parsed[0]);
+        setDream(parsed[0].dream);
+      }
+    } catch {
+      setHistory([]);
+    }
+  }, []);
+
+  const stats = useMemo(() => {
+    if (!result) return null;
+
+    const sum = result.numbers.reduce((a, b) => a + b, 0);
+    const odd = result.numbers.filter((n) => n % 2 === 1).length;
+    const even = 6 - odd;
+    const low = result.numbers.filter((n) => n <= 22).length;
+    const high = 6 - low;
+
+    return { sum, odd, even, low, high };
+  }, [result]);
+
+  function handleGenerate() {
+    if (!canGenerate) return;
+
+    const next = generateDreamResult(dream.trim());
+    setResult(next);
+    setCopied(false);
+
+    const nextHistory = [next, ...history].slice(0, 5);
+    setHistory(nextHistory);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextHistory));
+  }
+
+  async function copyResult() {
+    if (!result) return;
+
+    const text = [
+      "해말아 꿈 해몽 번호 리포트",
+      `꿈: ${result.dream}`,
+      `상징: ${result.symbol}`,
+      `감정: ${result.emotion}`,
+      `추천 번호: ${result.numbers.join(", ")}`,
+      `보너스: ${result.bonus}`,
+      "https://www.haemala.com/dream-lotto",
+    ].join("\n");
+
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+  }
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] text-slate-950">
-      <section className="mx-auto max-w-6xl px-5 py-8 sm:px-6 lg:px-8">
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-          <div className="bg-gradient-to-br from-indigo-950 via-slate-950 to-purple-950 px-6 py-10 text-white sm:px-10">
-            <p className="mb-3 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black text-white/80">
-              꿈해몽 기반 로또 번호 생성기
-            </p>
+    <main className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f]">
+      <header className="sticky top-0 z-50 border-b border-black/5 bg-[#f5f5f7]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
+          <Link href="/" className="text-sm font-semibold tracking-tight">
+            해말아
+          </Link>
 
-            <h1 className="max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
-              어젯밤 꿈을 입력하면
-              <br />
-              오늘의 번호 조합을 뽑아드립니다
-            </h1>
+          <nav className="hidden gap-8 text-xs font-semibold text-neutral-500 sm:flex">
+            <Link href="/dream-lotto" className="text-black">
+              꿈해몽
+            </Link>
+            <Link href="/today" className="hover:text-black">
+              오늘
+            </Link>
+            <Link href="/random" className="hover:text-black">
+              랜덤
+            </Link>
+          </nav>
 
-            <p className="mt-5 max-w-2xl text-base font-medium leading-7 text-white/70 sm:text-lg">
-              돼지, 똥, 물, 불, 용, 돈, 조상 같은 꿈의 상징을 분석해
-              번호를 만듭니다. 저장 없이 브라우저 안에서만 작동합니다.
-            </p>
+          <Link
+            href="/today"
+            className="rounded-full bg-black px-4 py-1.5 text-xs font-bold text-white"
+          >
+            오늘 번호
+          </Link>
+        </div>
+      </header>
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {["DB 없음", "무료 사용", "즉시 생성"].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm font-black"
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
+      <section className="mx-auto max-w-6xl px-5 py-14 text-center sm:py-20">
+        <p className="text-sm font-bold text-neutral-500">Dream Report</p>
+
+        <h1 className="mt-4 text-6xl font-black leading-[0.92] tracking-[-0.08em] sm:text-7xl">
+          꿈을 읽고,
+          <br />
+          번호로 남기다.
+        </h1>
+
+        <p className="mx-auto mt-6 max-w-2xl text-lg font-semibold leading-8 tracking-[-0.03em] text-neutral-600">
+          기억나는 장면을 적으면 꿈의 상징, 감정, 흐름을 분석해 번호
+          리포트로 정리합니다.
+        </p>
+      </section>
+
+      <section className="mx-auto grid max-w-6xl gap-5 px-5 pb-10 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-[2.75rem] bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
+          <p className="text-sm font-bold text-neutral-400">Input</p>
+          <h2 className="mt-3 text-4xl font-black tracking-[-0.06em]">
+            꿈의 장면을 적어주세요.
+          </h2>
+
+          <textarea
+            value={dream}
+            onChange={(e) => setDream(e.target.value)}
+            placeholder="예: 바다 위를 걷다가 하늘로 날아오르는 꿈을 꿨어요."
+            className="mt-6 min-h-48 w-full resize-none rounded-[2rem] border border-black/5 bg-[#f5f5f7] p-5 text-base font-semibold leading-7 outline-none transition placeholder:text-neutral-400 focus:bg-white focus:ring-2 focus:ring-black"
+          />
+
+          <div className="mt-4 flex items-center justify-between text-xs font-bold text-neutral-400">
+            <span>장소, 인물, 감정이 들어가면 더 좋습니다.</span>
+            <span>{dream.trim().length}자</span>
           </div>
 
-          <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-[1.7rem] border border-slate-200 bg-slate-50 p-5">
-              <label className="text-sm font-black text-slate-700">
-                꿈 내용을 적어주세요
-              </label>
+          <button
+            onClick={handleGenerate}
+            disabled={!canGenerate}
+            className="mt-6 w-full rounded-full bg-black px-7 py-4 text-base font-bold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:hover:translate-y-0"
+          >
+            꿈 해몽 번호 생성
+          </button>
 
-              <textarea
-                value={dream}
-                onChange={(e) => setDream(e.target.value)}
-                placeholder="예: 큰 돼지가 집으로 들어왔고, 마당에 맑은 물이 흘렀어요."
-                className="mt-3 min-h-[190px] w-full resize-none rounded-3xl border border-slate-200 bg-white p-5 text-base font-semibold leading-7 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
-              />
-
-              <button
-                disabled={!canSubmit}
-                onClick={() => setSubmitted(dream.trim())}
-                className="mt-4 w-full rounded-3xl bg-slate-950 px-6 py-4 text-base font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-950 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:translate-y-0"
-              >
-                꿈기운 번호 생성하기
-              </button>
-
-              <div className="mt-4 rounded-3xl bg-white p-4 text-sm font-semibold leading-6 text-slate-500">
-                이 서비스는 재미와 콘텐츠용입니다. 로또 당첨을 보장하지
-                않습니다. 과도한 구매는 피하고, 소액으로만 즐기세요.
-              </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[2rem] bg-[#f5f5f7] p-5">
+              <p className="text-sm font-bold text-neutral-400">Private</p>
+              <p className="mt-2 text-sm font-semibold leading-7 text-neutral-600">
+                입력한 꿈은 서버에 저장하지 않습니다.
+              </p>
             </div>
 
-            <div className="rounded-[1.7rem] border border-slate-200 bg-white p-5">
-              <p className="text-sm font-black text-slate-500">오늘의 꿈기운</p>
-
-              {submitted ? (
-                <>
-                  <div className="mt-4 flex items-end gap-3">
-                    <strong className="text-5xl font-black">
-                      {analysis.score}
-                    </strong>
-                    <span className="pb-2 text-sm font-black text-slate-500">
-                      / 100
-                    </span>
-                  </div>
-
-                  <p className="mt-3 text-xl font-black">
-                    {analysis.main.label}
-                  </p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-                    {analysis.main.desc}
-                  </p>
-
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {(analysis.found.length
-                      ? analysis.found
-                      : [{ key: "직감", label: "기본운", weight: 5 }]
-                    ).map((item) => (
-                      <span
-                        key={item.key}
-                        className="rounded-full bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700"
-                      >
-                        #{item.key} · {item.label}
-                      </span>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="mt-5 rounded-3xl bg-slate-50 p-6 text-sm font-semibold leading-7 text-slate-500">
-                  꿈을 입력하면 상징 키워드, 기운 점수, 추천 번호 조합이
-                  표시됩니다.
-                </div>
-              )}
+            <div className="rounded-[2rem] bg-[#f5f5f7] p-5">
+              <p className="text-sm font-bold text-neutral-400">Archive</p>
+              <p className="mt-2 text-sm font-semibold leading-7 text-neutral-600">
+                최근 결과는 내 브라우저에만 남습니다.
+              </p>
             </div>
           </div>
         </div>
 
-        {sets.length > 0 && (
-          <section className="mt-8">
-            <div className="mb-4 flex items-end justify-between gap-3">
-              <div>
-                <p className="text-sm font-black text-indigo-700">
-                  추천 번호 5세트
-                </p>
-                <h2 className="text-3xl font-black">꿈 기반 번호 조합</h2>
+        <div
+          id="dream-result-card"
+          className="rounded-[2.75rem] bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-10"
+        >
+          {!result ? (
+            <div className="flex min-h-[560px] flex-col items-center justify-center text-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-black text-2xl font-black text-white">
+                꿈
               </div>
-              <button
-                onClick={() => {
-                  setDream("");
-                  setSubmitted("");
-                }}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600"
-              >
-                다시하기
-              </button>
-            </div>
 
-            <div className="grid gap-4">
-              {sets.map((set, index) => (
-                <article
-                  key={set.id}
-                  className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <p className="text-xs font-black text-slate-400">
-                        SET {index + 1}
-                      </p>
-                      <h3 className="mt-1 text-xl font-black">{set.title}</h3>
-                      <p className="mt-2 text-sm font-semibold text-slate-500">
-                        {set.tone} {set.reason}
-                      </p>
-                    </div>
+              <h2 className="mt-6 text-4xl font-black tracking-[-0.06em]">
+                리포트가 여기에 표시됩니다.
+              </h2>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      {set.numbers.map((n) => (
-                        <span
-                          key={n}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-base font-black text-white shadow-sm"
-                        >
-                          {n}
-                        </span>
-                      ))}
-                      <span className="px-1 text-xl font-black text-slate-300">
-                        +
-                      </span>
-                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-base font-black text-white shadow-sm">
-                        {set.bonus}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
-          {[
-            {
-              title: "왜 이 번호인가요?",
-              body: "꿈속 상징어를 숫자 시드로 바꾸고, 고저·홀짝·구간 분산을 적용했습니다.",
-            },
-            {
-              title: "패턴형인가요?",
-              body: "고정 번호표가 아니라 입력한 꿈 문장에 따라 결과가 달라지는 방식입니다.",
-            },
-            {
-              title: "개인정보 저장하나요?",
-              body: "아니요. 입력값은 서버나 DB에 저장하지 않고 현재 화면에서만 사용합니다.",
-            },
-          ].map((item) => (
-            <div
-              key={item.title}
-              className="rounded-[1.7rem] border border-slate-200 bg-white p-5"
-            >
-              <h3 className="text-lg font-black">{item.title}</h3>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-                {item.body}
+              <p className="mt-4 max-w-md text-sm font-semibold leading-7 text-neutral-600">
+                꿈을 입력하면 상징, 감정, 번호, 해석 리포트가 한 번에
+                생성됩니다.
               </p>
             </div>
-          ))}
-        </section>
+          ) : (
+            <>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-neutral-400">
+                    {result.theme}
+                  </p>
+                  <h2 className="mt-2 text-4xl font-black tracking-[-0.06em]">
+                    {result.symbol}의 꿈
+                  </h2>
+                </div>
+
+                <div className="rounded-full bg-[#f5f5f7] px-4 py-2 text-sm font-black text-neutral-600">
+                  해석 {result.score}/100
+                </div>
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-2 sm:gap-3">
+                {result.numbers.map((num) => (
+                  <div
+                    key={num}
+                    className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-lg font-black text-white shadow-sm sm:h-16 sm:w-16 sm:text-xl"
+                  >
+                    {num}
+                  </div>
+                ))}
+
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f5f5f7] text-lg font-black text-black ring-1 ring-black/10 sm:h-16 sm:w-16 sm:text-xl">
+                  +{result.bonus}
+                </div>
+              </div>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[1.5rem] bg-[#f5f5f7] p-5">
+                  <p className="text-xs font-bold text-neutral-400">상징</p>
+                  <p className="mt-2 text-2xl font-black">{result.symbol}</p>
+                </div>
+                <div className="rounded-[1.5rem] bg-[#f5f5f7] p-5">
+                  <p className="text-xs font-bold text-neutral-400">감정</p>
+                  <p className="mt-2 text-2xl font-black">{result.emotion}</p>
+                </div>
+                <div className="rounded-[1.5rem] bg-[#f5f5f7] p-5">
+                  <p className="text-xs font-bold text-neutral-400">합계</p>
+                  <p className="mt-2 text-2xl font-black">{stats?.sum}</p>
+                </div>
+              </div>
+
+              <div className="mt-8 rounded-[2rem] bg-[#1d1d1f] p-6 text-white">
+                <p className="text-sm font-bold text-white/40">Report</p>
+                <h3 className="mt-3 text-2xl font-black tracking-[-0.05em]">
+                  {result.summary}
+                </h3>
+                <p className="mt-4 text-sm font-semibold leading-7 text-white/65">
+                  {result.detail}
+                </p>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button
+                  onClick={copyResult}
+                  className="rounded-full bg-black px-7 py-4 text-base font-bold text-white transition hover:-translate-y-0.5"
+                >
+                  {copied ? "복사 완료" : "결과 복사"}
+                </button>
+
+                <Link
+                  href="/today"
+                  className="rounded-full bg-[#f5f5f7] px-7 py-4 text-center text-base font-bold text-black ring-1 ring-black/5 transition hover:-translate-y-0.5"
+                >
+                  오늘 번호도 보기
+                </Link>
+              </div>
+
+              <ShareResultButtons
+                targetId="dream-result-card"
+                fileName="haemala-dream-result"
+                shareText={`해말아 꿈 해몽 번호 리포트\n상징: ${
+                  result.symbol
+                }\n감정: ${result.emotion}\n추천 번호: ${result.numbers.join(
+                  ", "
+                )}\n보너스: ${result.bonus}`}
+              />
+            </>
+          )}
+        </div>
       </section>
+
+      <section className="mx-auto max-w-6xl px-5 pb-10">
+        <div className="rounded-[2.5rem] border border-dashed border-black/10 bg-white/60 p-8 text-center">
+          <p className="text-sm font-bold text-neutral-400">Ad Space</p>
+          <p className="mt-2 text-sm font-semibold text-neutral-500">
+            광고 삽입 예정 영역입니다.
+          </p>
+        </div>
+      </section>
+
+      {result && (
+        <section className="mx-auto max-w-6xl px-5 pb-10">
+          <div className="rounded-[2.5rem] bg-white p-7 shadow-sm ring-1 ring-black/5">
+            <p className="text-sm font-bold text-neutral-400">
+              Number Meaning
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {result.numbers.map((num) => (
+                <div
+                  key={`meaning-${num}`}
+                  className="flex items-center justify-between rounded-2xl bg-[#f5f5f7] px-5 py-4"
+                >
+                  <span className="text-xl font-black">{num}</span>
+                  <span className="text-sm font-bold text-neutral-500">
+                    {getNumberMeaning(num)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="mx-auto grid max-w-6xl gap-5 px-5 pb-16 lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="rounded-[2.5rem] bg-[#1d1d1f] p-7 text-white shadow-sm">
+          <p className="text-sm font-bold text-white/40">Dream Archive</p>
+          <h2 className="mt-4 text-4xl font-black leading-[1] tracking-[-0.07em]">
+            최근 꿈을
+            <br />
+            다시 열어보기.
+          </h2>
+          <p className="mt-5 text-sm font-semibold leading-7 text-white/62">
+            결과는 브라우저에만 저장됩니다. 회원가입이나 서버 저장 없이 최근
+            꿈 리포트를 다시 확인할 수 있습니다.
+          </p>
+        </div>
+
+        <div className="grid gap-3">
+          {history.length === 0 ? (
+            <div className="rounded-[2rem] bg-white p-6 text-sm font-semibold text-neutral-500 shadow-sm ring-1 ring-black/5">
+              아직 저장된 꿈 리포트가 없습니다.
+            </div>
+          ) : (
+            history.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setResult(item);
+                  setDream(item.dream);
+                  setCopied(false);
+                }}
+                className="rounded-[2rem] bg-white p-5 text-left shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-neutral-400">
+                      {formatTime(item.createdAt)}
+                    </p>
+                    <h3 className="mt-1 text-xl font-black tracking-[-0.04em]">
+                      {item.symbol} · {item.emotion}
+                    </h3>
+                    <p className="mt-2 line-clamp-1 text-sm font-semibold text-neutral-500">
+                      {item.dream}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.numbers.map((num) => (
+                      <span
+                        key={`${item.id}-${num}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-xs font-black text-white"
+                      >
+                        {num}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="bg-black px-5 py-14 text-center text-white">
+        <h2 className="text-4xl font-black tracking-[-0.06em]">
+          꿈이 없다면,
+          <br />
+          오늘의 흐름으로.
+        </h2>
+
+        <p className="mx-auto mt-4 max-w-xl text-sm font-semibold leading-7 text-white/60">
+          꿈 해몽 번호는 가장 개인적인 리포트입니다. 더 빠르게 보고 싶다면
+          오늘의 번호나 랜덤 번호를 확인해보세요.
+        </p>
+
+        <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+          <Link
+            href="/today"
+            className="rounded-full bg-white px-7 py-4 text-base font-bold text-black"
+          >
+            오늘의 번호
+          </Link>
+          <Link
+            href="/random"
+            className="rounded-full bg-white/10 px-7 py-4 text-base font-bold text-white ring-1 ring-white/15"
+          >
+            랜덤 번호
+          </Link>
+        </div>
+      </section>
+
+      <footer className="border-t border-black/5 bg-[#f5f5f7]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-8 text-xs font-semibold text-neutral-500 sm:flex-row sm:items-center sm:justify-between">
+          <p>© 2026 해말아. All rights reserved.</p>
+
+          <div className="flex flex-wrap gap-4">
+            <Link href="/privacy" className="hover:text-black">
+              개인정보처리방침
+            </Link>
+            <Link href="/contact" className="hover:text-black">
+              문의
+            </Link>
+            <Link href="/dream-lotto" className="hover:text-black">
+              꿈해몽
+            </Link>
+            <Link href="/today" className="hover:text-black">
+              오늘
+            </Link>
+            <Link href="/random" className="hover:text-black">
+              랜덤
+            </Link>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

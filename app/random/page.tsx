@@ -1,340 +1,470 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import ShareResultButtons from "../components/ShareResultButtons";
 
-type Mode = "choice" | "luck" | "mood" | "mission";
-
-type Result = {
-  title: string;
-  verdict: string;
-  score: number;
-  reason: string;
-  action: string;
-  tags: string[];
+type LottoResult = {
+  id: string;
+  numbers: number[];
+  bonus: number;
+  createdAt: string;
+  balanceScore: number;
+  sum: number;
+  oddCount: number;
+  lowCount: number;
+  mood: string;
 };
 
-const modes: { id: Mode; name: string; desc: string }[] = [
-  { id: "choice", name: "랜덤 선택", desc: "할지 말지, A/B 선택" },
-  { id: "luck", name: "오늘 운세", desc: "오늘의 흐름 확인" },
-  { id: "mood", name: "기분 전환", desc: "지금 상태 리셋" },
-  { id: "mission", name: "오늘 미션", desc: "가볍게 실행할 행동" },
+const moods = [
+  "균형형 조합",
+  "차분한 흐름",
+  "변화 중심",
+  "상승 흐름",
+  "안정 중심",
+  "분산형 조합",
 ];
 
-const samples = [
-  "오늘 운동 갈까 말까",
-  "치킨 먹을까 말까",
-  "연락할까 말까",
-  "지금 공부할까 쉴까",
-  "주말에 나갈까 집에 있을까",
-];
+const STORAGE_KEY = "haemala_random_history_v1";
 
-const verdicts = {
-  choice: ["해라", "말아라", "조금만 해라", "오늘은 보류", "작게 시작해라"],
-  luck: ["상승 흐름", "정리의 날", "기회 포착", "무리 금지", "귀인운 있음"],
-  mood: ["리셋 필요", "움직이면 풀림", "쉬어야 회복", "정리하면 안정", "가볍게 웃어라"],
-  mission: ["10분 산책", "물 한 컵", "책상 정리", "메모 3줄", "연락 하나"],
-};
+function pickUniqueNumbers(count: number, min = 1, max = 45) {
+  const pool = Array.from({ length: max - min + 1 }, (_, i) => i + min);
+  const picked: number[] = [];
 
-const reasons = [
-  "지금은 고민을 오래 끌수록 에너지만 빠지는 흐름입니다.",
-  "작게 실행하면 손해보다 정보가 더 많이 쌓이는 상황입니다.",
-  "과몰입을 줄이고 선택지를 단순화하는 쪽이 유리합니다.",
-  "오늘은 큰 결정보다 가벼운 확인과 테스트가 적합합니다.",
-  "기분과 체력이 판단에 영향을 주고 있으니 속도를 낮추는 게 좋습니다.",
-  "완벽한 답보다 빠른 첫 행동이 결과를 바꿀 가능성이 큽니다.",
-];
-
-const actions = [
-  "딱 10분만 해보고 계속할지 다시 판단하세요.",
-  "지금 바로 가장 작은 행동 하나만 실행하세요.",
-  "오늘은 결론보다 기록을 남기는 쪽으로 가세요.",
-  "선택지를 2개로 줄이고 더 가벼운 쪽을 고르세요.",
-  "30분 뒤에도 같은 생각이면 실행하세요.",
-  "돈, 시간, 감정 소모가 크면 오늘은 보류하세요.",
-];
-
-const tagPool = [
-  "직감",
-  "타이밍",
-  "가벼운실행",
-  "무리금지",
-  "기회",
-  "리셋",
-  "정리",
-  "재시도",
-  "속도조절",
-  "오늘운",
-];
-
-function hashString(input: string) {
-  let h = 1779033703 ^ input.length;
-  for (let i = 0; i < input.length; i++) {
-    h = Math.imul(h ^ input.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
+  while (picked.length < count && pool.length > 0) {
+    const index = Math.floor(Math.random() * pool.length);
+    picked.push(pool[index]);
+    pool.splice(index, 1);
   }
-  return h >>> 0;
+
+  return picked.sort((a, b) => a - b);
 }
 
-function rng(seed: number) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function getRangeScore(numbers: number[]) {
+  const ranges = [0, 0, 0, 0, 0];
+
+  numbers.forEach((n) => {
+    if (n <= 9) ranges[0] += 1;
+    else if (n <= 18) ranges[1] += 1;
+    else if (n <= 27) ranges[2] += 1;
+    else if (n <= 36) ranges[3] += 1;
+    else ranges[4] += 1;
+  });
+
+  return ranges.filter(Boolean).length * 12;
 }
 
-function pick<T>(list: T[], random: () => number) {
-  return list[Math.floor(random() * list.length)];
+function getBalanceScore(numbers: number[]) {
+  const sum = numbers.reduce((a, b) => a + b, 0);
+  const oddCount = numbers.filter((n) => n % 2 === 1).length;
+  const lowCount = numbers.filter((n) => n <= 22).length;
+
+  let score = 40;
+
+  if (sum >= 100 && sum <= 180) score += 20;
+  else if (sum >= 85 && sum <= 200) score += 12;
+  else score += 5;
+
+  if (oddCount >= 2 && oddCount <= 4) score += 20;
+  else score += 10;
+
+  if (lowCount >= 2 && lowCount <= 4) score += 15;
+  else score += 7;
+
+  score += Math.min(getRangeScore(numbers), 25);
+
+  return Math.min(score, 100);
 }
 
-function makeResult(mode: Mode, input: string, spin: number): Result {
-  const seed = hashString(`${mode}|${input}|${spin}|haemala-random`);
-  const random = rng(seed);
+function generateBalancedResult(): LottoResult {
+  let best = pickUniqueNumbers(6);
+  let bestScore = getBalanceScore(best);
 
-  const score = Math.floor(51 + random() * 49);
-  const title = pick(verdicts[mode], random);
-  const selectedTags = Array.from(
-    new Set([
-      pick(tagPool, random),
-      pick(tagPool, random),
-      pick(tagPool, random),
-    ])
-  ).slice(0, 3);
+  for (let i = 0; i < 80; i++) {
+    const candidate = pickUniqueNumbers(6);
+    const score = getBalanceScore(candidate);
+
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+
+    if (score >= 92) break;
+  }
+
+  const bonusPool = Array.from({ length: 45 }, (_, i) => i + 1).filter(
+    (n) => !best.includes(n)
+  );
+
+  const bonus = bonusPool[Math.floor(Math.random() * bonusPool.length)];
+  const sum = best.reduce((a, b) => a + b, 0);
+  const oddCount = best.filter((n) => n % 2 === 1).length;
+  const lowCount = best.filter((n) => n <= 22).length;
 
   return {
-    title,
-    verdict:
-      mode === "choice"
-        ? score >= 75
-          ? "강하게 실행"
-          : score >= 62
-            ? "작게 실행"
-            : "보류 추천"
-        : score >= 80
-          ? "좋은 흐름"
-          : score >= 65
-            ? "보통 이상"
-            : "속도 조절",
-    score,
-    reason: pick(reasons, random),
-    action: pick(actions, random),
-    tags: selectedTags,
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    numbers: best,
+    bonus,
+    createdAt: new Date().toISOString(),
+    balanceScore: bestScore,
+    sum,
+    oddCount,
+    lowCount,
+    mood: moods[Math.floor(Math.random() * moods.length)],
   };
+}
+
+function getNumberTone(num: number) {
+  if (num <= 10) return "초반";
+  if (num <= 20) return "전개";
+  if (num <= 30) return "중심";
+  if (num <= 40) return "확장";
+  return "마무리";
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 export default function RandomPage() {
-  const [mode, setMode] = useState<Mode>("choice");
-  const [input, setInput] = useState("");
-  const [spin, setSpin] = useState(1);
+  const [result, setResult] = useState<LottoResult | null>(null);
+  const [history, setHistory] = useState<LottoResult[]>([]);
+  const [copied, setCopied] = useState(false);
+  const resultRef = useRef<HTMLDivElement | null>(null);
 
-  const result = useMemo(
-    () => makeResult(mode, input.trim() || "오늘의 랜덤", spin),
-    [mode, input, spin]
-  );
+  useEffect(() => {
+    const first = generateBalancedResult();
+    setResult(first);
+
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved).slice(0, 5));
+      } catch {
+        setHistory([]);
+      }
+    }
+  }, []);
+
+  const report = useMemo(() => {
+    if (!result) return null;
+
+    const evenCount = 6 - result.oddCount;
+    const highCount = 6 - result.lowCount;
+
+    return {
+      evenCount,
+      highCount,
+      summary:
+        result.balanceScore >= 90
+          ? "구간, 홀짝, 합계가 안정적으로 분산된 조합입니다."
+          : result.balanceScore >= 80
+            ? "전체 균형이 무난한 조합입니다."
+            : "조금 개성이 강한 흐름의 조합입니다.",
+      detail: `합계 ${result.sum}, 홀수 ${result.oddCount}개, 짝수 ${evenCount}개로 구성되었습니다. 낮은 번호 ${result.lowCount}개와 높은 번호 ${highCount}개가 섞여 있어 한쪽으로 크게 치우치지 않는 흐름입니다.`,
+    };
+  }, [result]);
+
+  function createNewResult() {
+    const next = generateBalancedResult();
+    setResult(next);
+    setCopied(false);
+
+    const nextHistory = [next, ...history].slice(0, 5);
+    setHistory(nextHistory);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextHistory));
+  }
+
+  async function copyResult() {
+    if (!result) return;
+
+    const text = [
+      "해말아 랜덤 번호 리포트",
+      `추천 번호: ${result.numbers.join(", ")}`,
+      `보너스: ${result.bonus}`,
+      `균형 점수: ${result.balanceScore}/100`,
+      "https://www.haemala.com/random",
+    ].join("\n");
+
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+  }
 
   return (
-    <main className="min-h-screen bg-[#f8fafc] text-slate-950">
-      <section className="mx-auto max-w-6xl px-5 py-8 sm:px-6 lg:px-8">
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-          <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-fuchsia-950 px-6 py-10 text-white sm:px-10">
-            <p className="mb-4 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black text-white/80">
-              HAEMALA RANDOM
-            </p>
+    <main className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f]">
+      <header className="sticky top-0 z-50 border-b border-black/5 bg-[#f5f5f7]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
+          <Link href="/" className="text-sm font-semibold tracking-tight">
+            해말아
+          </Link>
 
-            <h1 className="text-4xl font-black tracking-tight sm:text-6xl">
-              오늘의 랜덤 선택
+          <nav className="hidden gap-8 text-xs font-semibold text-neutral-500 sm:flex">
+            <Link href="/dream-lotto" className="hover:text-black">
+              꿈해몽
+            </Link>
+            <Link href="/today" className="hover:text-black">
+              오늘
+            </Link>
+            <Link href="/random" className="text-black">
+              랜덤
+            </Link>
+          </nav>
+
+          <Link
+            href="/today"
+            className="rounded-full bg-black px-4 py-1.5 text-xs font-bold text-white"
+          >
+            오늘 번호
+          </Link>
+        </div>
+      </header>
+
+      <section className="mx-auto max-w-6xl px-5 py-14 text-center sm:py-20">
+        <p className="text-sm font-bold text-neutral-500">Random Report</p>
+
+        <h1 className="mt-4 text-6xl font-black leading-[0.92] tracking-[-0.08em] sm:text-7xl">
+          빠르게,
+          <br />
+          그러나 균형 있게.
+        </h1>
+
+        <p className="mx-auto mt-6 max-w-2xl text-lg font-semibold leading-8 tracking-[-0.03em] text-neutral-600">
+          단순 랜덤이 아니라 홀짝, 구간, 합계 밸런스를 함께 고려해 보기 좋은
+          번호 조합을 생성합니다.
+        </p>
+      </section>
+
+      <section className="mx-auto grid max-w-6xl gap-5 px-5 pb-10 lg:grid-cols-[1.15fr_0.85fr]">
+        <div
+          id="random-result-card"
+          ref={resultRef}
+          className="rounded-[2.75rem] bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-10"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-neutral-400">추천 번호</p>
+              <h2 className="mt-2 text-4xl font-black tracking-[-0.06em]">
+                {result?.mood ?? "균형형 조합"}
+              </h2>
+            </div>
+
+            <div className="rounded-full bg-[#f5f5f7] px-4 py-2 text-sm font-black text-neutral-600">
+              균형 {result?.balanceScore ?? 0}/100
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-wrap gap-2 sm:gap-3">
+            {(result?.numbers ?? []).map((num) => (
+              <div
+                key={num}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-lg font-black text-white shadow-sm sm:h-16 sm:w-16 sm:text-xl"
+              >
+                {num}
+              </div>
+            ))}
+
+            {result && (
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f5f5f7] text-lg font-black text-black ring-1 ring-black/10 sm:h-16 sm:w-16 sm:text-xl">
+                +{result.bonus}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-[1.5rem] bg-[#f5f5f7] p-5">
+              <p className="text-xs font-bold text-neutral-400">합계</p>
+              <p className="mt-2 text-3xl font-black">{result?.sum ?? 0}</p>
+            </div>
+            <div className="rounded-[1.5rem] bg-[#f5f5f7] p-5">
+              <p className="text-xs font-bold text-neutral-400">홀짝</p>
+              <p className="mt-2 text-3xl font-black">
+                {result?.oddCount ?? 0}:{report?.evenCount ?? 0}
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] bg-[#f5f5f7] p-5">
+              <p className="text-xs font-bold text-neutral-400">저고</p>
+              <p className="mt-2 text-3xl font-black">
+                {result?.lowCount ?? 0}:{report?.highCount ?? 0}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-[2rem] bg-[#1d1d1f] p-6 text-white">
+            <p className="text-sm font-bold text-white/40">Report</p>
+            <h3 className="mt-3 text-2xl font-black tracking-[-0.05em]">
+              {report?.summary}
+            </h3>
+            <p className="mt-4 text-sm font-semibold leading-7 text-white/65">
+              {report?.detail}
+            </p>
+          </div>
+
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={createNewResult}
+              className="rounded-full bg-black px-7 py-4 text-base font-bold text-white transition hover:-translate-y-0.5"
+            >
+              새 번호 생성
+            </button>
+
+            <button
+              onClick={copyResult}
+              className="rounded-full bg-[#f5f5f7] px-7 py-4 text-base font-bold text-black ring-1 ring-black/5 transition hover:-translate-y-0.5"
+            >
+              {copied ? "복사 완료" : "결과 복사"}
+            </button>
+          </div>
+
+          {result && (
+            <ShareResultButtons
+              targetId="random-result-card"
+              fileName="haemala-random-result"
+              shareText={`해말아 랜덤 번호 리포트\n추천 번호: ${result.numbers.join(
+                ", "
+              )}\n보너스: ${result.bonus}\n균형 점수: ${
+                result.balanceScore
+              }/100`}
+            />
+          )}
+        </div>
+
+        <aside className="grid gap-5">
+          <div className="rounded-[2.5rem] bg-[#1d1d1f] p-7 text-white shadow-sm">
+            <p className="text-sm font-bold text-white/40">Balance Logic</p>
+            <h2 className="mt-4 text-4xl font-black leading-[1] tracking-[-0.07em]">
+              무작위에도
               <br />
-              한 번 눌러서 정해보세요
-            </h1>
-
-            <p className="mt-5 max-w-2xl text-base font-semibold leading-8 text-white/70">
-              고민, 운세, 기분, 미션을 버튼 하나로 뽑습니다. 회원가입 없이
-              바로 쓰는 무료 랜덤 콘텐츠입니다.
+              보기 좋은 균형을.
+            </h2>
+            <p className="mt-5 text-sm font-semibold leading-7 text-white/62">
+              생성 후보를 여러 번 만들고, 합계·홀짝·구간 분산이 더 안정적인
+              조합을 선택합니다. 당첨 예측이 아니라 보기 좋은 조합 필터입니다.
             </p>
+          </div>
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-4">
-              {modes.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setMode(item.id)}
-                  className={`rounded-2xl border p-4 text-left transition ${
-                    mode === item.id
-                      ? "border-white bg-white text-slate-950"
-                      : "border-white/10 bg-white/10 text-white hover:bg-white/15"
-                  }`}
+          <div className="rounded-[2.5rem] bg-white p-7 shadow-sm ring-1 ring-black/5">
+            <p className="text-sm font-bold text-neutral-400">번호 해석</p>
+            <div className="mt-5 space-y-3">
+              {(result?.numbers ?? []).map((num) => (
+                <div
+                  key={`tone-${num}`}
+                  className="flex items-center justify-between rounded-2xl bg-[#f5f5f7] px-4 py-3"
                 >
-                  <p className="text-sm font-black">{item.name}</p>
-                  <p
-                    className={`mt-1 text-xs font-semibold ${
-                      mode === item.id ? "text-slate-500" : "text-white/55"
-                    }`}
-                  >
-                    {item.desc}
-                  </p>
-                </button>
+                  <span className="font-black">{num}</span>
+                  <span className="text-sm font-bold text-neutral-500">
+                    {getNumberTone(num)}
+                  </span>
+                </div>
               ))}
             </div>
           </div>
+        </aside>
+      </section>
 
-          <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-[1.7rem] border border-slate-200 bg-slate-50 p-5">
-              <label className="text-sm font-black text-slate-700">
-                고민이나 주제를 입력하세요
-              </label>
+      <section className="mx-auto max-w-6xl px-5 pb-10">
+        <div className="rounded-[2.5rem] border border-dashed border-black/10 bg-white/60 p-8 text-center">
+          <p className="text-sm font-bold text-neutral-400">Ad Space</p>
+          <p className="mt-2 text-sm font-semibold text-neutral-500">
+            광고 삽입 예정 영역입니다.
+          </p>
+        </div>
+      </section>
 
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="예: 오늘 운동 갈까 말까?"
-                className="mt-3 min-h-[160px] w-full resize-none rounded-3xl border border-slate-200 bg-white p-5 text-base font-semibold leading-7 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
-              />
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {samples.map((sample) => (
-                  <button
-                    key={sample}
-                    onClick={() => setInput(sample)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600"
-                  >
-                    {sample}
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={() => setSpin((v) => v + 1)}
-                className="mt-5 w-full rounded-3xl bg-slate-950 px-6 py-4 text-base font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-700"
-              >
-                랜덤 결과 다시 뽑기
-              </button>
-
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                {["즉시결과", "무료", "저장없음"].map((v) => (
-                  <div
-                    key={v}
-                    className="rounded-2xl bg-white p-3 text-xs font-black text-slate-500"
-                  >
-                    {v}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <article className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black text-indigo-700">
-                    랜덤 결과
-                  </p>
-                  <h2 className="mt-2 text-4xl font-black tracking-tight">
-                    {result.title}
-                  </h2>
-                </div>
-
-                <div className="rounded-3xl bg-slate-950 px-5 py-4 text-center text-white">
-                  <p className="text-xs font-black text-white/50">점수</p>
-                  <p className="text-3xl font-black">{result.score}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-3xl bg-indigo-50 p-5">
-                <p className="text-sm font-black text-indigo-700">
-                  {result.verdict}
-                </p>
-                <p className="mt-2 text-sm font-semibold leading-7 text-slate-600">
-                  {result.reason}
-                </p>
-              </div>
-
-              <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <p className="text-sm font-black text-slate-700">
-                  지금 할 행동
-                </p>
-                <p className="mt-2 text-lg font-black leading-7">
-                  {result.action}
-                </p>
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                {result.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <Link
-                  href="/today"
-                  className="rounded-3xl bg-slate-950 px-5 py-4 text-center text-sm font-black text-white transition hover:bg-indigo-700"
-                >
-                  더 진지하게 판단받기
-                </Link>
-                <Link
-                  href="/dream-lotto"
-                  className="rounded-3xl border border-slate-200 bg-white px-5 py-4 text-center text-sm font-black text-slate-700 transition hover:bg-slate-50"
-                >
-                  꿈해몽 로또 보기
-                </Link>
-              </div>
-            </article>
-          </div>
+      <section className="mx-auto grid max-w-6xl gap-5 px-5 pb-16 lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="rounded-[2.5rem] bg-white p-7 shadow-sm ring-1 ring-black/5">
+          <p className="text-sm font-bold text-neutral-400">History</p>
+          <h2 className="mt-3 text-3xl font-black tracking-[-0.06em]">
+            최근 생성 기록
+          </h2>
+          <p className="mt-3 text-sm font-semibold leading-7 text-neutral-600">
+            이 기록은 브라우저에만 저장됩니다. 회원가입이나 서버 저장은
+            사용하지 않습니다.
+          </p>
         </div>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
-          {[
-            {
-              title: "완전 고정 패턴 아님",
-              body: "선택 모드, 입력 문장, 다시 뽑기 횟수를 조합해 매번 다른 결과를 만듭니다.",
-            },
-            {
-              title: "모바일 우선 구조",
-              body: "짧은 입력, 큰 버튼, 카드형 결과로 스마트폰에서 빠르게 소비되도록 설계했습니다.",
-            },
-            {
-              title: "내부 이동 강화",
-              body: "결과 확인 후 /today, /dream-lotto로 이어지게 만들어 체류 흐름을 늘립니다.",
-            },
-          ].map((item) => (
-            <article
-              key={item.title}
-              className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm"
-            >
-              <h3 className="text-lg font-black">{item.title}</h3>
-              <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-                {item.body}
-              </p>
-            </article>
-          ))}
-        </section>
-
-        <section className="mt-8 rounded-[2rem] bg-slate-950 p-6 text-white sm:p-8">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-black text-white/50">
-                오늘 고민이 더 크다면
-              </p>
-              <h2 className="mt-2 text-3xl font-black">해말아 판단으로 이동</h2>
-              <p className="mt-2 text-sm font-semibold text-white/60">
-                랜덤보다 구체적인 판단이 필요하면 오늘의 해말아를 사용하세요.
-              </p>
+        <div className="grid gap-3">
+          {history.length === 0 ? (
+            <div className="rounded-[2rem] bg-white p-6 text-sm font-semibold text-neutral-500 shadow-sm ring-1 ring-black/5">
+              아직 저장된 기록이 없습니다. 새 번호를 생성하면 이곳에 최근 결과가
+              표시됩니다.
             </div>
+          ) : (
+            history.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setResult(item)}
+                className="rounded-[2rem] bg-white p-5 text-left shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    {item.numbers.map((num) => (
+                      <span
+                        key={`${item.id}-${num}`}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-xs font-black text-white"
+                      >
+                        {num}
+                      </span>
+                    ))}
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f5f5f7] text-xs font-black ring-1 ring-black/10">
+                      +{item.bonus}
+                    </span>
+                  </div>
 
-            <Link
-              href="/today"
-              className="rounded-3xl bg-white px-7 py-4 text-center text-base font-black text-slate-950 transition hover:-translate-y-0.5"
-            >
-              /today 바로가기
+                  <div className="text-sm font-bold text-neutral-400">
+                    {formatTime(item.createdAt)}
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="bg-black px-5 py-14 text-center text-white">
+        <h2 className="text-4xl font-black tracking-[-0.06em]">
+          오늘의 흐름도 확인해보세요.
+        </h2>
+        <p className="mx-auto mt-4 max-w-xl text-sm font-semibold leading-7 text-white/60">
+          랜덤 조합이 빠른 선택이라면, 오늘의 번호는 매일 다시 확인하기 좋은
+          흐름형 리포트입니다.
+        </p>
+
+        <Link
+          href="/today"
+          className="mt-7 inline-block rounded-full bg-white px-7 py-4 text-base font-bold text-black"
+        >
+          오늘의 번호 보기
+        </Link>
+      </section>
+
+      <footer className="border-t border-black/5 bg-[#f5f5f7]">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-8 text-xs font-semibold text-neutral-500 sm:flex-row sm:items-center sm:justify-between">
+          <p>© 2026 해말아. All rights reserved.</p>
+
+          <div className="flex flex-wrap gap-4">
+            <Link href="/privacy" className="hover:text-black">
+              개인정보처리방침
+            </Link>
+            <Link href="/contact" className="hover:text-black">
+              문의
+            </Link>
+            <Link href="/dream-lotto" className="hover:text-black">
+              꿈해몽
+            </Link>
+            <Link href="/today" className="hover:text-black">
+              오늘
+            </Link>
+            <Link href="/random" className="hover:text-black">
+              랜덤
             </Link>
           </div>
-        </section>
-      </section>
+        </div>
+      </footer>
     </main>
   );
 }
