@@ -1,873 +1,431 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useMemo, useRef, useState } from "react";
+import html2canvas from "html2canvas";
 
-type Post = {
+type PickSet = {
   id: string;
   title: string;
-  category: string;
-  situation: string;
-  optionA: string;
-  optionB: string;
-  votesA: number;
-  votesB: number;
-  comments: string[];
-  createdAt?: string;
+  numbers: number[];
+  bonus: number;
+  score: number;
+  mood: string;
+  summary: string;
+  reason: string[];
+  balance: {
+    sum: number;
+    odd: number;
+    even: number;
+    low: number;
+    high: number;
+    spread: number;
+  };
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-
-const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
-
-const seedPosts: Post[] = [
-  {
-    id: "seed-1",
-    title: "썸남이 답장은 7시간 뒤에 하는데 인스타 스토리는 올림",
-    category: "썸",
-    situation:
-      "아침에 카톡 보냈는데 답장은 밤에 왔어. 근데 중간에 인스타 스토리는 2개나 올렸더라. 이거 관심 없는 거야?",
-    optionA: "관심 없다",
-    optionB: "바빴을 수도 있다",
-    votesA: 128,
-    votesB: 76,
-    comments: [
-      "스토리 올릴 시간은 있는데 답장 시간은 없다? 이건 좀 아프다.",
-      "한 번이면 몰라도 반복되면 답 나온 거임.",
-      "연애판에서 알림 무시는 거의 판결문.",
-    ],
-  },
-  {
-    id: "seed-2",
-    title: "전 애인이 생일 축하한다고 연락 옴",
-    category: "전애인",
-    situation:
-      "헤어진 지 4개월 됐고 서로 연락 안 했는데 생일에 갑자기 연락이 왔어. 그냥 예의일까, 다시 시작하고 싶은 걸까?",
-    optionA: "미련 있다",
-    optionB: "그냥 예의다",
-    votesA: 89,
-    votesB: 112,
-    comments: [
-      "생일은 연락하기 좋은 핑계임.",
-      "내용이 길었으면 미련, 짧았으면 예의.",
-    ],
-  },
-  {
-    id: "seed-3",
-    title: "소개팅 후 ‘조심히 들어가세요’만 오고 끝",
-    category: "소개팅",
-    situation:
-      "분위기는 괜찮았다고 생각했는데 집 도착 후 ‘조심히 들어가세요’ 이후로 연락이 없어. 내가 먼저 또 보내야 할까?",
-    optionA: "한 번 더 보내본다",
-    optionB: "끝난 거다",
-    votesA: 61,
-    votesB: 94,
-    comments: [
-      "한 번은 보내봐도 됨. 두 번부터는 자존심 장례식.",
-      "상대도 기다릴 수도 있긴 함. 인간들 참 비효율적.",
-    ],
-  },
+const DREAM_TAGS = [
+  { key: "물", label: "흐름", tone: "감정·재물 흐름" },
+  { key: "불", label: "폭발", tone: "전환·추진력" },
+  { key: "돈", label: "재물", tone: "기회·이익" },
+  { key: "사람", label: "관계", tone: "인연·협력" },
+  { key: "동물", label: "본능", tone: "직감·생존력" },
+  { key: "하늘", label: "상승", tone: "도약·확장" },
+  { key: "길", label: "진행", tone: "방향·선택" },
+  { key: "집", label: "기반", tone: "안정·보호" },
+  { key: "문", label: "개방", tone: "새 국면" },
+  { key: "바다", label: "대운", tone: "큰 흐름" },
+  { key: "산", label: "성취", tone: "목표·극복" },
+  { key: "아이", label: "시작", tone: "새 가능성" },
+  { key: "차", label: "이동", tone: "속도·변화" },
+  { key: "비", label: "정화", tone: "해소·회복" },
+  { key: "빛", label: "징조", tone: "발견·해답" },
 ];
 
-const categories = ["전체", "썸", "연애중", "소개팅", "전애인", "이별", "친구", "기타"];
-
-const balanceGames = [
-  ["매일 연락하지만 자주 못 만남", "연락은 적지만 자주 만남"],
-  ["내가 더 좋아하는 연애", "상대가 더 좋아하는 연애"],
-  ["답장 빠른데 무심함", "답장 느린데 다정함"],
-  ["싸우면 바로 푸는 사람", "혼자 시간 갖는 사람"],
-  ["친구 같은 연애", "설레는 연애"],
-  ["전 애인과 친구 가능", "절대 불가능"],
+const MOODS = [
+  "금운 상승형",
+  "전환 돌파형",
+  "관계 확장형",
+  "기회 포착형",
+  "직감 강화형",
+  "회복 안정형",
+  "새 국면 개방형",
+  "숨은 운 발견형",
 ];
+
+function hashText(text: string) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function cryptoRand(max: number) {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] % max;
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalize(nums: number[]) {
+  return [...nums].sort((a, b) => a - b);
+}
+
+function hasWeakPattern(nums: number[]) {
+  const sorted = normalize(nums);
+  const consecutive = sorted.filter((n, i) => i > 0 && n === sorted[i - 1] + 1).length;
+  const sum = sorted.reduce((a, b) => a + b, 0);
+  const odd = sorted.filter((n) => n % 2 === 1).length;
+  const zoneMap = sorted.reduce<Record<number, number>>((acc, n) => {
+    const zone = Math.floor((n - 1) / 10);
+    acc[zone] = (acc[zone] || 0) + 1;
+    return acc;
+  }, {});
+  const maxZone = Math.max(...Object.values(zoneMap));
+  return consecutive >= 3 || sum < 85 || sum > 190 || odd === 0 || odd === 6 || maxZone >= 5;
+}
+
+function weightedNumber(seed: number, dream: string, used: Set<number>) {
+  const chars = [...dream];
+  const signal = chars.reduce((acc, ch, idx) => acc + ch.charCodeAt(0) * (idx + 11), seed);
+
+  let best = 1;
+  let bestScore = -Infinity;
+
+  for (let n = 1; n <= 45; n++) {
+    if (used.has(n)) continue;
+
+    const noise = cryptoRand(100000) / 100000;
+    const textAffinity = Math.sin((signal + n * 89) % 997) * 0.52;
+    const dreamAffinity = Math.cos((seed + n * n * 17) % 991) * 0.38;
+    const centerBias = 1 - Math.abs(23 - n) / 23;
+    const antiObvious = Math.abs(Math.sin(n * 13.37 + seed)) * 0.24;
+
+    const score = noise * 0.82 + textAffinity + dreamAffinity + centerBias * 0.18 + antiObvious;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = n;
+    }
+  }
+
+  return best;
+}
+
+function createPick(dream: string, index: number): PickSet {
+  const seed = hashText(`${dream}-${Date.now()}-${cryptoRand(999999)}-${index}`);
+  const used = new Set<number>();
+
+  let tries = 0;
+  while (used.size < 6 && tries < 300) {
+    used.add(weightedNumber(seed + tries * 193, dream, used));
+    tries++;
+  }
+
+  let numbers = normalize([...used]);
+
+  let repair = 0;
+  while (hasWeakPattern(numbers) && repair < 100) {
+    const temp = new Set(numbers);
+    temp.delete(numbers[cryptoRand(numbers.length)]);
+    while (temp.size < 6) {
+      temp.add(weightedNumber(seed + cryptoRand(999999), dream, temp));
+    }
+    numbers = normalize([...temp]);
+    repair++;
+  }
+
+  const bonusPool = Array.from({ length: 45 }, (_, i) => i + 1).filter((n) => !numbers.includes(n));
+  const bonus = bonusPool[cryptoRand(bonusPool.length)];
+
+  const sum = numbers.reduce((a, b) => a + b, 0);
+  const odd = numbers.filter((n) => n % 2 === 1).length;
+  const even = 6 - odd;
+  const low = numbers.filter((n) => n <= 22).length;
+  const high = 6 - low;
+  const spread = numbers[5] - numbers[0];
+
+  const score = clamp(
+    78 +
+      Math.round(
+        (spread / 45) * 8 +
+          (3 - Math.abs(3 - odd)) * 3 +
+          (3 - Math.abs(3 - low)) * 3 +
+          cryptoRand(8)
+      ),
+    78,
+    98
+  );
+
+  const mood = MOODS[(seed + index + cryptoRand(MOODS.length)) % MOODS.length];
+
+  return {
+    id: crypto.randomUUID(),
+    title: `${mood} · ${index + 1}번 리딩`,
+    numbers,
+    bonus,
+    score,
+    mood,
+    summary:
+      score >= 92
+        ? "균형, 분산, 꿈 신호 반영도가 모두 높은 상위 조합입니다."
+        : score >= 86
+        ? "번호대가 안정적으로 분산된 실전형 조합입니다."
+        : "과도한 규칙성을 제거한 보정형 조합입니다.",
+    reason: [
+      `합계 ${sum}: 극단적인 저합·고합을 피하고 중간 안정권으로 조정했습니다.`,
+      `홀짝 ${odd}:${even}: 한쪽 편향을 줄여 조합 밀도를 보정했습니다.`,
+      `저고 ${low}:${high}: 1~22와 23~45 구간을 나누어 분산도를 확인했습니다.`,
+      `간격 ${spread}: 번호가 붙어 보이는 단순 배열을 피했습니다.`,
+    ],
+    balance: { sum, odd, even, low, high, spread },
+  };
+}
+
+function getSignals(dream: string) {
+  const found = DREAM_TAGS.filter((x) => dream.includes(x.key));
+  return found.length ? found.slice(0, 5) : DREAM_TAGS.slice(0, 3);
+}
+
+function Ball({ n }: { n: number }) {
+  return (
+    <div className="relative grid h-12 w-12 place-items-center rounded-full border border-amber-200/70 bg-[radial-gradient(circle_at_30%_25%,#fff7c2_0%,#facc15_28%,#b7791f_70%,#5f370e_100%)] text-lg font-black text-black shadow-[0_0_22px_rgba(250,204,21,0.35)] sm:h-14 sm:w-14">
+      <span className="absolute left-2 top-1 h-3 w-3 rounded-full bg-white/70 blur-[1px]" />
+      {n}
+    </div>
+  );
+}
 
 export default function Home() {
-  const [posts, setPosts] = useState<Post[]>(seedPosts);
-  const [activePostId, setActivePostId] = useState(seedPosts[0].id);
-  const [category, setCategory] = useState("전체");
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"hot" | "new" | "controversial">("hot");
-  const [toast, setToast] = useState("");
-  const [aiResult, setAiResult] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [voteLoading, setVoteLoading] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [balanceIndex, setBalanceIndex] = useState(0);
+  const [dream, setDream] = useState("");
+  const [picks, setPicks] = useState<PickSet[]>([]);
+  const [loading, setLoading] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const signals = useMemo(() => getSignals(dream), [dream]);
 
-  const [form, setForm] = useState({
-    title: "",
-    category: "썸",
-    situation: "",
-    optionA: "",
-    optionB: "",
-  });
+  const generate = () => {
+    if (!dream.trim()) return;
+    setLoading(true);
+    setTimeout(() => {
+      setPicks(Array.from({ length: 5 }, (_, i) => createPick(dream.trim(), i)));
+      setLoading(false);
+    }, 550);
+  };
 
-  const activePost = posts.find((p) => p.id === activePostId) || posts[0];
-
-  useEffect(() => {
-    loadPosts();
-  }, []);
-
-  async function loadPosts() {
-    if (!supabase) return;
-
-    const { data: postRows, error } = await supabase
-      .from("posts")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error || !postRows) return;
-
-    const { data: voteRows } = await supabase.from("votes").select("*");
-    const { data: commentRows } = await supabase
-      .from("comments")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    const mapped: Post[] = postRows.map((row: any) => {
-      const vote = voteRows?.find((v: any) => v.post_id === row.id);
-      const comments =
-        commentRows
-          ?.filter((c: any) => c.post_id === row.id)
-          .map((c: any) => c.content) || [];
-
-      return {
-        id: row.id,
-        title: row.title,
-        category: row.category,
-        situation: row.situation,
-        optionA: row.option_a,
-        optionB: row.option_b,
-        votesA: vote?.votes_a || 0,
-        votesB: vote?.votes_b || 0,
-        comments: comments.length ? comments : ["아직 댓글이 없습니다. 첫 인간이 되어보세요."],
-        createdAt: row.created_at,
-      };
+  const saveImage = async () => {
+    if (!resultRef.current) return;
+    const canvas = await html2canvas(resultRef.current, {
+      backgroundColor: "#09090b",
+      scale: 2,
+      useCORS: true,
     });
-
-    if (mapped.length > 0) {
-      setPosts(mapped);
-      setActivePostId(mapped[0].id);
-    }
-  }
-
-  function getFingerprint() {
-    let fp = localStorage.getItem("haemala_fingerprint");
-    if (!fp) {
-      fp = crypto.randomUUID();
-      localStorage.setItem("haemala_fingerprint", fp);
-    }
-    return fp;
-  }
-
-  async function vote(postId: string, side: "A" | "B") {
-    if (voteLoading) return;
-
-    setVoteLoading(true);
-
-    const oldPost = posts.find((p) => p.id === postId);
-    if (!oldPost) {
-      setVoteLoading(false);
-      return;
-    }
-
-    if (postId.startsWith("seed-")) {
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                votesA: side === "A" ? p.votesA + 1 : p.votesA,
-                votesB: side === "B" ? p.votesB + 1 : p.votesB,
-              }
-            : p
-        )
-      );
-      showToast("샘플 사연 투표 완료. DB 저장은 실제 등록 사연부터 됩니다.");
-      setVoteLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/vote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postId,
-          side,
-          fingerprint: getFingerprint(),
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        showToast("이미 투표했어. 민주주의도 1인 1표다.");
-        setVoteLoading(false);
-        return;
-      }
-
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                votesA: data.votesA ?? p.votesA,
-                votesB: data.votesB ?? p.votesB,
-              }
-            : p
-        )
-      );
-
-      showToast("투표 완료. 세상이 조금 더 시끄러워졌습니다.");
-    } catch {
-      showToast("투표 실패. 서버가 잠깐 삐졌습니다.");
-    }
-
-    setVoteLoading(false);
-  }
-
-  async function analyze(post: Post) {
-    setAiLoading(true);
-    setAiResult("");
-
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          situation: `
-제목: ${post.title}
-상황: ${post.situation}
-선택지 A: ${post.optionA}
-선택지 B: ${post.optionB}
-투표 A: ${post.votesA}
-투표 B: ${post.votesB}
-
-아래 형식으로 분석해줘.
-1. AI 한줄 판결
-2. 상황 요약
-3. 위험 신호
-4. 추천 행동
-5. 보낼 수 있는 카톡 예시
-`,
-        }),
-      });
-
-      const data = await res.json();
-      setAiResult(data.result || "AI가 침묵했습니다. 기계도 가끔 현타 옵니다.");
-    } catch {
-      setAiResult("AI 분석 실패. API 키나 서버 상태를 확인해야 합니다.");
-    }
-
-    setAiLoading(false);
-  }
-
-  async function createPost() {
-    if (!form.title || !form.situation || !form.optionA || !form.optionB) {
-      showToast("빈칸 다 채워. 연애도 입력도 애매하면 망한다.");
-      return;
-    }
-
-    if (!supabase) {
-      const localPost: Post = {
-        id: `local-${Date.now()}`,
-        title: form.title,
-        category: form.category,
-        situation: form.situation,
-        optionA: form.optionA,
-        optionB: form.optionB,
-        votesA: 0,
-        votesB: 0,
-        comments: ["방금 올라온 따끈한 사연입니다."],
-      };
-
-      setPosts((prev) => [localPost, ...prev]);
-      setActivePostId(localPost.id);
-      resetForm();
-      showToast("로컬 등록 완료. Supabase 연결하면 저장됩니다.");
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("posts")
-      .insert({
-        title: form.title,
-        category: form.category,
-        situation: form.situation,
-        option_a: form.optionA,
-        option_b: form.optionB,
-      })
-      .select()
-      .single();
-
-    if (error || !data) {
-      showToast("사연 저장 실패. Supabase 테이블 확인해.");
-      return;
-    }
-
-    await supabase.from("votes").insert({
-      post_id: data.id,
-      votes_a: 0,
-      votes_b: 0,
-    });
-
-    const newPost: Post = {
-      id: data.id,
-      title: data.title,
-      category: data.category,
-      situation: data.situation,
-      optionA: data.option_a,
-      optionB: data.option_b,
-      votesA: 0,
-      votesB: 0,
-      comments: ["방금 올라온 따끈한 사연입니다."],
-      createdAt: data.created_at,
-    };
-
-    setPosts((prev) => [newPost, ...prev]);
-    setActivePostId(newPost.id);
-    resetForm();
-    showToast("사연 등록 완료. 이제 사람들의 심판을 받습니다.");
-  }
-
-  async function addComment() {
-    if (!activePost || !commentText.trim()) return;
-
-    const text = commentText.trim();
-
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === activePost.id
-          ? {
-              ...p,
-              comments: [text, ...(p.comments || [])],
-            }
-          : p
-      )
-    );
-
-    setCommentText("");
-    showToast("댓글 등록 완료. 또 하나의 의견이 인터넷에 풀려났습니다.");
-
-    if (supabase && !activePost.id.startsWith("seed-") && !activePost.id.startsWith("local-")) {
-      await supabase.from("comments").insert({
-        post_id: activePost.id,
-        content: text,
-      });
-    }
-  }
-
-  function resetForm() {
-    setForm({
-      title: "",
-      category: "썸",
-      situation: "",
-      optionA: "",
-      optionB: "",
-    });
-  }
-
-  function sharePost() {
-    const text = `${activePost.title}\n\n너라면 뭐 고름?\n${window.location.href}`;
-    navigator.clipboard.writeText(text);
-    showToast("공유 문구 복사 완료. 이제 친구를 이 혼란에 초대해.");
-  }
-
-  function showToast(message: string) {
-    setToast(message);
-    setTimeout(() => setToast(""), 2300);
-  }
-
-  const filteredPosts = useMemo(() => {
-    let list = [...posts];
-
-    if (category !== "전체") {
-      list = list.filter((p) => p.category === category);
-    }
-
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      list = list.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.situation.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q)
-      );
-    }
-
-    if (sort === "hot") {
-      list.sort((a, b) => b.votesA + b.votesB - (a.votesA + a.votesB));
-    }
-
-    if (sort === "new") {
-      list.sort((a, b) => {
-        const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bt - at;
-      });
-    }
-
-    if (sort === "controversial") {
-      list.sort((a, b) => controversyScore(b) - controversyScore(a));
-    }
-
-    return list;
-  }, [posts, category, query, sort]);
-
-  const totalVotes = posts.reduce((sum, p) => sum + p.votesA + p.votesB, 0);
-  const totalComments = posts.reduce((sum, p) => sum + (p.comments?.length || 0), 0);
-  const hotPosts = [...posts]
-    .sort((a, b) => b.votesA + b.votesB - (a.votesA + a.votesB))
-    .slice(0, 5);
-
-  const currentBalance = balanceGames[balanceIndex];
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    link.download = `haemala-premium-${Date.now()}.png`;
+    link.click();
+  };
 
   return (
-    <main className="min-h-screen bg-[#090914] text-white">
-      {toast && (
-        <div className="fixed left-1/2 top-5 z-50 w-[90%] max-w-xl -translate-x-1/2 rounded-2xl border border-white/20 bg-white px-5 py-4 text-center text-sm font-black text-black shadow-2xl">
-          {toast}
-        </div>
-      )}
+    <main className="min-h-screen overflow-hidden bg-[#07070a] text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(250,204,21,0.22),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.18),transparent_30%),linear-gradient(180deg,#09090b_0%,#11100b_50%,#050505_100%)]" />
+      <div className="pointer-events-none fixed inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.18)_1px,transparent_1px)] [background-size:42px_42px]" />
 
-      <section className="mx-auto max-w-7xl px-4 py-6 md:px-8">
-        <header className="overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-fuchsia-600 via-violet-700 to-indigo-950 p-6 shadow-2xl md:p-10">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+      <section className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-12">
+        <header className="relative overflow-hidden rounded-[2rem] border border-amber-300/25 bg-white/[0.06] p-6 shadow-2xl backdrop-blur-xl sm:p-10">
+          <div className="absolute right-[-80px] top-[-90px] h-72 w-72 rounded-full bg-amber-300/20 blur-3xl" />
+
+          <div className="mb-7 flex flex-wrap items-center gap-3">
+            <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-2 text-xs font-black text-amber-200">
+              HAEMALA PREMIUM READING
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300">
+              DB 없음 · 무료 · 이미지 저장 가능
+            </span>
+          </div>
+
+          <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
             <div>
-              <div className="mb-4 inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-black backdrop-blur">
-                HAEMALA · 연애판결소
-              </div>
-
-              <h1 className="max-w-4xl text-4xl font-black tracking-tight md:text-7xl">
-                애매한 연애,
-                <br />
-                혼자 고민하지 말고
-                <br />
-                사람들한테 판결받자.
+              <h1 className="text-5xl font-black tracking-[-0.06em] text-white sm:text-7xl lg:text-8xl">
+                해말아
+                <span className="mt-3 block bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600 bg-clip-text text-3xl text-transparent sm:text-5xl">
+                  꿈을 번호로 번역하다
+                </span>
               </h1>
-
-              <p className="mt-5 max-w-2xl text-base font-medium leading-7 text-white/80 md:text-lg">
-                썸, 소개팅, 전애인, 이별 상황을 올리면 사람들이 투표하고 AI가 냉정하게
-                정리해주는 실시간 연애 판단 서비스.
+              <p className="mt-6 max-w-3xl text-base font-semibold leading-8 text-zinc-300 sm:text-lg">
+                입력한 꿈의 상징, 현재 보안 난수, 번호 분산, 홀짝 균형, 합계 안정성,
+                구간 편향 회피를 결합해 매번 다른 번호 리포트를 생성합니다.
               </p>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  onClick={() => document.getElementById("write")?.scrollIntoView({ behavior: "smooth" })}
-                  className="rounded-2xl bg-white px-5 py-4 font-black text-black transition hover:scale-105"
-                >
-                  내 사연 올리기
-                </button>
-                <button
-                  onClick={sharePost}
-                  className="rounded-2xl border border-white/30 bg-white/10 px-5 py-4 font-black text-white transition hover:bg-white/20"
-                >
-                  친구한테 물어보기
-                </button>
-              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <Stat label="전체 사연" value={posts.length.toLocaleString()} />
-              <Stat label="누적 투표" value={totalVotes.toLocaleString()} />
-              <Stat label="댓글 반응" value={totalComments.toLocaleString()} />
+            <div className="rounded-[1.7rem] border border-amber-300/20 bg-black/30 p-5">
+              <p className="text-sm font-black text-amber-200">오늘의 리딩 방식</p>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                {["꿈 신호", "분산 보정", "패턴 제거", "이미지 저장"].map((x) => (
+                  <div key={x} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 font-bold">
+                    {x}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </header>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-6">
-            <div className="rounded-[2rem] border border-white/10 bg-white/10 p-5 shadow-xl backdrop-blur">
-              <div className="flex flex-col gap-3 md:flex-row">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="사연 검색: 답장, 전애인, 소개팅..."
-                  className="flex-1 rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-white outline-none placeholder:text-white/40 focus:border-fuchsia-300"
-                />
-
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as any)}
-                  className="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-white outline-none"
-                >
-                  <option value="hot">인기순</option>
-                  <option value="new">최신순</option>
-                  <option value="controversial">논란순</option>
-                </select>
+        <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 shadow-2xl backdrop-blur-xl sm:p-7">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-black text-amber-200">DREAM INPUT</p>
+                <h2 className="mt-1 text-2xl font-black">꿈 내용 입력</h2>
               </div>
-
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setCategory(c)}
-                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-black transition ${
-                      category === c
-                        ? "bg-white text-black"
-                        : "bg-white/10 text-white hover:bg-white/20"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
+              <div className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-200">
+                {dream.length}자
               </div>
             </div>
 
-            <div className="grid gap-4">
-              {filteredPosts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  active={post.id === activePost?.id}
-                  onClick={() => {
-                    setActivePostId(post.id);
-                    setAiResult("");
-                  }}
-                />
+            <textarea
+              value={dream}
+              onChange={(e) => setDream(e.target.value)}
+              placeholder="예: 낯선 바닷가에서 금빛 문을 열었고, 안쪽에 돈과 밝은 빛이 보였어요."
+              className="mt-5 min-h-[240px] w-full resize-none rounded-[1.5rem] border border-amber-300/20 bg-black/35 p-5 text-base font-semibold leading-7 text-white outline-none placeholder:text-zinc-500 focus:border-amber-300/70 focus:shadow-[0_0_40px_rgba(250,204,21,0.12)]"
+            />
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {signals.map((s) => (
+                <span
+                  key={s.key}
+                  className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-black text-amber-100"
+                >
+                  #{s.label} · {s.tone}
+                </span>
               ))}
             </div>
+
+            <button
+              onClick={generate}
+              disabled={!dream.trim() || loading}
+              className="mt-6 w-full rounded-[1.5rem] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600 px-6 py-5 text-lg font-black text-black shadow-[0_18px_50px_rgba(250,204,21,0.22)] transition hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:from-zinc-600 disabled:to-zinc-700 disabled:text-zinc-300"
+            >
+              {loading ? "꿈 신호 해석 중..." : "프리미엄 번호 리포트 생성"}
+            </button>
           </div>
 
-          <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-            <div className="rounded-[2rem] border border-white/10 bg-white p-5 text-black shadow-2xl">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-black text-fuchsia-600">오늘의 판결</p>
-                  <h2 className="mt-2 text-2xl font-black leading-tight">
-                    {activePost?.title}
-                  </h2>
+          <aside className="rounded-[2rem] border border-amber-300/15 bg-black/35 p-5 shadow-2xl backdrop-blur-xl sm:p-7">
+            <p className="text-sm font-black text-amber-200">QUALITY ENGINE</p>
+            <h2 className="mt-1 text-2xl font-black">패턴형 추천 제거 로직</h2>
+
+            <div className="mt-6 space-y-4">
+              {[
+                ["고정표 배제", "입력 문장과 실시간 보안 난수를 섞어 같은 꿈도 다른 결과를 만듭니다."],
+                ["분산 검사", "특정 번호대에 몰리는 조합을 감지하고 다시 보정합니다."],
+                ["극단값 회피", "합계가 지나치게 낮거나 높은 조합은 리포트에서 제외합니다."],
+                ["근거 생성", "각 조합마다 합계·홀짝·저고·간격을 따로 설명합니다."],
+              ].map(([a, b]) => (
+                <div key={a} className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-5">
+                  <p className="font-black text-white">{a}</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-zinc-400">{b}</p>
                 </div>
-                <span className="rounded-full bg-black px-3 py-2 text-xs font-black text-white">
-                  {activePost?.category}
-                </span>
-              </div>
-
-              <p className="mt-4 rounded-2xl bg-black/5 p-4 text-sm leading-6 text-black/70">
-                {activePost?.situation}
-              </p>
-
-              <div className="mt-4 rounded-2xl bg-yellow-100 p-4">
-                <p className="text-sm font-black">판세</p>
-                <p className="mt-1 text-xl font-black">
-                  {controversyLabel(activePost)}
-                </p>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <button
-                  onClick={() => vote(activePost.id, "A")}
-                  className="w-full rounded-2xl bg-black p-4 text-left font-black text-white transition hover:scale-[1.02]"
-                >
-                  A. {activePost.optionA}
-                </button>
-
-                <button
-                  onClick={() => vote(activePost.id, "B")}
-                  className="w-full rounded-2xl bg-fuchsia-600 p-4 text-left font-black text-white transition hover:scale-[1.02]"
-                >
-                  B. {activePost.optionB}
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <VoteBar
-                  dark
-                  label={activePost.optionA}
-                  value={percent(activePost.votesA, activePost.votesB)}
-                  votes={activePost.votesA}
-                />
-                <VoteBar
-                  dark
-                  label={activePost.optionB}
-                  value={percent(activePost.votesB, activePost.votesA)}
-                  votes={activePost.votesB}
-                />
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => analyze(activePost)}
-                  className="rounded-2xl bg-yellow-300 px-4 py-4 font-black text-black transition hover:bg-yellow-200"
-                >
-                  {aiLoading ? "분석 중..." : "AI 판결"}
-                </button>
-
-                <button
-                  onClick={sharePost}
-                  className="rounded-2xl bg-black px-4 py-4 font-black text-white transition hover:bg-black/80"
-                >
-                  공유하기
-                </button>
-              </div>
-
-              {aiResult && (
-                <div className="mt-4 whitespace-pre-line rounded-2xl bg-black p-4 text-sm leading-6 text-white">
-                  {aiResult}
-                </div>
-              )}
-
-              <div className="mt-5">
-                <p className="mb-3 text-sm font-black">댓글 반응</p>
-
-                <div className="flex gap-2">
-                  <input
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="한마디 남기기"
-                    className="flex-1 rounded-xl border border-black/10 bg-black/5 px-3 py-3 text-sm outline-none"
-                  />
-                  <button
-                    onClick={addComment}
-                    className="rounded-xl bg-black px-4 py-3 text-sm font-black text-white"
-                  >
-                    등록
-                  </button>
-                </div>
-
-                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
-                  {(activePost.comments || []).map((comment, index) => (
-                    <p
-                      key={`${comment}-${index}`}
-                      className="rounded-xl bg-black/5 p-3 text-sm leading-5 text-black/70"
-                    >
-                      {comment}
-                    </p>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-gradient-to-br from-yellow-300 to-orange-400 p-5 text-black shadow-xl">
-              <p className="text-sm font-black">밸런스 게임</p>
-              <h3 className="mt-2 text-2xl font-black">둘 중 하나만 고른다면?</h3>
-
-              <div className="mt-4 grid gap-3">
-                <button
-                  onClick={() => {
-                    setBalanceIndex((prev) => (prev + 1) % balanceGames.length);
-                    showToast("선택 완료. 인간 취향 데이터가 또 쌓였습니다.");
-                  }}
-                  className="rounded-2xl bg-white p-4 text-left font-black shadow"
-                >
-                  {currentBalance[0]}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setBalanceIndex((prev) => (prev + 1) % balanceGames.length);
-                    showToast("선택 완료. 다음 혼란으로 넘어갑니다.");
-                  }}
-                  className="rounded-2xl bg-black p-4 text-left font-black text-white shadow"
-                >
-                  {currentBalance[1]}
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-white/10 bg-white/10 p-5 shadow-xl">
-              <p className="text-sm font-black text-white/70">실시간 인기 TOP 5</p>
-              <div className="mt-4 space-y-3">
-                {hotPosts.map((post, index) => (
-                  <button
-                    key={post.id}
-                    onClick={() => {
-                      setActivePostId(post.id);
-                      setAiResult("");
-                    }}
-                    className="w-full rounded-2xl bg-white/10 p-4 text-left transition hover:bg-white/20"
-                  >
-                    <p className="text-sm font-black text-fuchsia-300">
-                      #{index + 1} · {post.votesA + post.votesB}표
-                    </p>
-                    <p className="mt-1 font-black">{post.title}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="mt-5 rounded-[1.4rem] border border-amber-300/20 bg-amber-300/10 p-4 text-sm font-bold leading-6 text-amber-100">
+              로또는 확률 게임입니다. 이 서비스는 당첨 보장이 아니라 재미, 해석, 체류 경험을 위한 운세형 콘텐츠입니다.
+            </p>
           </aside>
         </section>
 
-        <section
-          id="write"
-          className="mt-6 rounded-[2rem] border border-white/10 bg-white p-6 text-black shadow-2xl"
-        >
-          <p className="text-sm font-black text-fuchsia-600">사연 등록</p>
-          <h2 className="mt-2 text-3xl font-black">네 연애 재판을 열어라</h2>
-          <p className="mt-2 text-sm leading-6 text-black/60">
-            제목, 상황, 선택지 2개만 넣으면 바로 투표 카드가 생성된다. 이렇게 또 인터넷에
-            하나의 재판장이 생긴다.
-          </p>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <input
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="제목: 예) 썸녀가 갑자기 존댓말을 써요"
-              className="rounded-2xl border border-black/10 bg-black/5 p-4 outline-none focus:border-fuchsia-500"
-            />
-
-            <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="rounded-2xl border border-black/10 bg-black/5 p-4 outline-none focus:border-fuchsia-500"
-            >
-              {categories
-                .filter((c) => c !== "전체")
-                .map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-            </select>
-
-            <textarea
-              value={form.situation}
-              onChange={(e) => setForm({ ...form, situation: e.target.value })}
-              placeholder="상황을 자세히 적어줘"
-              className="min-h-40 rounded-2xl border border-black/10 bg-black/5 p-4 outline-none focus:border-fuchsia-500 md:col-span-2"
-            />
-
-            <input
-              value={form.optionA}
-              onChange={(e) => setForm({ ...form, optionA: e.target.value })}
-              placeholder="선택지 A: 예) 관심 없다"
-              className="rounded-2xl border border-black/10 bg-black/5 p-4 outline-none focus:border-fuchsia-500"
-            />
-
-            <input
-              value={form.optionB}
-              onChange={(e) => setForm({ ...form, optionB: e.target.value })}
-              placeholder="선택지 B: 예) 바쁠 수도 있다"
-              className="rounded-2xl border border-black/10 bg-black/5 p-4 outline-none focus:border-fuchsia-500"
-            />
-          </div>
-
-          <button
-            onClick={createPost}
-            className="mt-5 w-full rounded-2xl bg-black p-5 text-lg font-black text-white transition hover:scale-[1.01]"
+        {picks.length > 0 && (
+          <section
+            ref={resultRef}
+            className="rounded-[2rem] border border-amber-300/20 bg-[#09090b] p-5 shadow-2xl sm:p-8"
           >
-            사연 등록하기
-          </button>
-        </section>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-amber-200">RESULT REPORT</p>
+                <h2 className="mt-1 text-3xl font-black sm:text-4xl">오늘의 꿈 번호 리포트</h2>
+                <p className="mt-2 text-sm font-semibold text-zinc-400">
+                  꿈 신호 기반 추천 5조합 · 보너스 후보 포함
+                </p>
+              </div>
+
+              <button
+                onClick={saveImage}
+                className="rounded-2xl border border-amber-300/30 bg-amber-300 px-5 py-3 text-sm font-black text-black shadow-[0_12px_35px_rgba(250,204,21,0.25)]"
+              >
+                결과 이미지 저장
+              </button>
+            </div>
+
+            <div className="mt-7 grid gap-5">
+              {picks.map((pick) => (
+                <article
+                  key={pick.id}
+                  className="overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.055]"
+                >
+                  <div className="border-b border-white/10 bg-gradient-to-r from-white/[0.08] to-amber-300/[0.08] p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <h3 className="text-xl font-black text-white">{pick.title}</h3>
+                        <p className="mt-2 text-sm font-semibold text-zinc-400">{pick.summary}</p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-center">
+                          <p className="text-xs font-black text-amber-200">해석 점수</p>
+                          <p className="text-2xl font-black text-amber-300">{pick.score}</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-center">
+                          <p className="text-xs font-black text-zinc-400">보너스</p>
+                          <p className="text-2xl font-black text-white">{pick.bonus}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      {pick.numbers.map((n) => (
+                        <Ball key={n} n={n} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 p-5 lg:grid-cols-[0.8fr_1.2fr]">
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        ["합계", pick.balance.sum],
+                        ["홀짝", `${pick.balance.odd}:${pick.balance.even}`],
+                        ["저고", `${pick.balance.low}:${pick.balance.high}`],
+                        ["간격", pick.balance.spread],
+                      ].map(([a, b]) => (
+                        <div key={a} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                          <p className="text-xs font-black text-zinc-500">{a}</p>
+                          <p className="mt-1 text-xl font-black text-white">{b}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {pick.reason.map((r) => (
+                        <p
+                          key={r}
+                          className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm font-semibold leading-6 text-zinc-300"
+                        >
+                          {r}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <footer className="pb-6 text-center text-xs font-bold text-zinc-500">
+          HAEMALA · 무료 운세형 번호 리딩 서비스 · 당첨 보장 없음
+        </footer>
       </section>
     </main>
   );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl bg-white/15 p-4 text-center backdrop-blur">
-      <p className="text-2xl font-black md:text-3xl">{value}</p>
-      <p className="mt-1 text-xs font-bold text-white/70">{label}</p>
-    </div>
-  );
-}
-
-function PostCard({
-  post,
-  active,
-  onClick,
-}: {
-  post: Post;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const total = post.votesA + post.votesB;
-  const aPercent = percent(post.votesA, post.votesB);
-  const bPercent = 100 - aPercent;
-
-  return (
-    <article
-      onClick={onClick}
-      className={`cursor-pointer rounded-[2rem] border p-5 shadow-xl transition hover:-translate-y-1 ${
-        active
-          ? "border-fuchsia-300 bg-white/20"
-          : "border-white/10 bg-white/10 hover:bg-white/15"
-      }`}
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-fuchsia-500 px-3 py-1 text-xs font-black">
-          {post.category}
-        </span>
-        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black text-white/80">
-          {total}표
-        </span>
-        <span className="rounded-full bg-yellow-300 px-3 py-1 text-xs font-black text-black">
-          {controversyLabel(post)}
-        </span>
-      </div>
-
-      <h2 className="text-xl font-black leading-tight md:text-2xl">{post.title}</h2>
-      <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/70">
-        {post.situation}
-      </p>
-
-      <div className="mt-4 space-y-3">
-        <VoteBar label={post.optionA} value={aPercent} votes={post.votesA} />
-        <VoteBar label={post.optionB} value={bPercent} votes={post.votesB} />
-      </div>
-    </article>
-  );
-}
-
-function VoteBar({
-  label,
-  value,
-  votes,
-  dark = false,
-}: {
-  label: string;
-  value: number;
-  votes: number;
-  dark?: boolean;
-}) {
-  return (
-    <div>
-      <div
-        className={`mb-1 flex justify-between gap-3 text-xs font-bold ${
-          dark ? "text-black/70" : "text-white/70"
-        }`}
-      >
-        <span className="line-clamp-1">{label}</span>
-        <span className="shrink-0">
-          {value}% · {votes}표
-        </span>
-      </div>
-
-      <div className={`h-3 overflow-hidden rounded-full ${dark ? "bg-black/10" : "bg-white/10"}`}>
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 to-yellow-300 transition-all duration-500"
-          style={{ width: `${value}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function percent(a: number, b: number) {
-  const total = a + b;
-  if (total === 0) return 50;
-  return Math.round((a / total) * 100);
-}
-
-function controversyScore(post: Post) {
-  const total = post.votesA + post.votesB;
-  if (total === 0) return 0;
-  const diff = Math.abs(post.votesA - post.votesB);
-  return total - diff * 2;
-}
-
-function controversyLabel(post: Post) {
-  const total = post.votesA + post.votesB;
-  if (total < 5) return "🆕 신규";
-
-  const diffPercent = Math.abs(percent(post.votesA, post.votesB) - 50);
-
-  if (diffPercent <= 5) return "🔥 대논쟁";
-  if (diffPercent <= 15) return "🤔 의견 갈림";
-  if (diffPercent <= 30) return "⚖️ 팽팽함";
-  return "🧠 거의 확정";
 }
