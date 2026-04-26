@@ -29,12 +29,12 @@ type HistoryItem = {
   picks: PickSet[];
 };
 
-const STORAGE_KEY = "haemala_history_v2";
+const STORAGE_KEY = "haemala_final_history_v1";
 
 const DREAM_TAGS = [
   { key: "물", label: "흐름", tone: "감정·재물 흐름" },
   { key: "불", label: "폭발", tone: "전환·추진력" },
-  { key: "돈", label: "재물", tone: "기회·이익" },
+  { key: "돈", label: "재물", tone: "금전·기회" },
   { key: "사람", label: "관계", tone: "인연·협력" },
   { key: "동물", label: "본능", tone: "직감·생존력" },
   { key: "하늘", label: "상승", tone: "도약·확장" },
@@ -60,7 +60,7 @@ const MOODS = [
   "숨은 운 발견형",
 ];
 
-const EXAMPLE_DREAMS = [
+const EXAMPLES = [
   "큰 바다 위에 금빛 문이 열리고 밝은 빛이 나왔어요.",
   "낯선 길을 걷다가 돈다발을 발견했는데 하늘이 노랗게 빛났어요.",
   "비 오는 밤에 오래된 집 안에서 흰 동물이 저를 바라봤어요.",
@@ -102,7 +102,6 @@ function hasWeakPattern(nums: number[]) {
   }, {});
 
   const maxZone = Math.max(...Object.values(zoneMap));
-
   return consecutive >= 3 || sum < 85 || sum > 190 || odd === 0 || odd === 6 || maxZone >= 5;
 }
 
@@ -149,11 +148,9 @@ function createPick(dream: string, index: number): PickSet {
   while (hasWeakPattern(numbers) && repair < 100) {
     const temp = new Set(numbers);
     temp.delete(numbers[cryptoRand(numbers.length)]);
-
     while (temp.size < 6) {
       temp.add(weightedNumber(seed + cryptoRand(999999), dream, temp));
     }
-
     numbers = normalize([...temp]);
     repair++;
   }
@@ -169,15 +166,15 @@ function createPick(dream: string, index: number): PickSet {
   const spread = numbers[5] - numbers[0];
 
   const score = clamp(
-    78 +
+    80 +
       Math.round(
         (spread / 45) * 8 +
           (3 - Math.abs(3 - odd)) * 3 +
           (3 - Math.abs(3 - low)) * 3 +
           cryptoRand(8)
       ),
-    78,
-    98
+    80,
+    99
   );
 
   const mood = MOODS[(seed + index + cryptoRand(MOODS.length)) % MOODS.length];
@@ -190,9 +187,9 @@ function createPick(dream: string, index: number): PickSet {
     score,
     mood,
     summary:
-      score >= 92
+      score >= 93
         ? "균형, 분산, 꿈 신호 반영도가 모두 높은 상위 조합입니다."
-        : score >= 86
+        : score >= 88
         ? "번호대가 안정적으로 분산된 실전형 조합입니다."
         : "과도한 규칙성을 제거한 보정형 조합입니다.",
     reason: [
@@ -219,15 +216,15 @@ function Ball({ n }: { n: number }) {
   );
 }
 
-function AdSlot({ label = "ADVERTISEMENT" }: { label?: string }) {
+function AdSlot({ label }: { label: string }) {
   return (
     <div className="rounded-[1.5rem] border border-dashed border-amber-300/25 bg-black/25 p-5 text-center">
       <p className="text-[10px] font-black tracking-[0.35em] text-amber-200/60">{label}</p>
-      <div className="mt-3 grid min-h-[90px] place-items-center rounded-2xl bg-white/[0.035] px-4">
+      <div className="mt-3 grid min-h-[96px] place-items-center rounded-2xl bg-white/[0.035] px-4">
         <p className="text-xs font-bold leading-5 text-zinc-500">
           광고 영역
           <br />
-          Google AdSense 승인 후 이 위치에 광고 코드를 삽입
+          AdSense 승인 후 광고 코드 삽입
         </p>
       </div>
     </div>
@@ -239,24 +236,29 @@ export default function Home() {
   const [picks, setPicks] = useState<PickSet[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [toast, setToast] = useState("");
   const resultRef = useRef<HTMLDivElement>(null);
 
   const signals = useMemo(() => getSignals(dream), [dream]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
+    if (!saved) return;
+
+    try {
+      setHistory(JSON.parse(saved));
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
 
-  const saveHistory = (next: HistoryItem) => {
-    const updated = [next, ...history].slice(0, 8);
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 1600);
+  };
+
+  const saveHistory = (item: HistoryItem) => {
+    const updated = [item, ...history].slice(0, 10);
     setHistory(updated);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   };
@@ -278,10 +280,11 @@ export default function Home() {
       });
 
       setLoading(false);
+
       setTimeout(() => {
         document.getElementById("result")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
-    }, 650);
+    }, 700);
   };
 
   const saveImage = async () => {
@@ -300,26 +303,31 @@ export default function Home() {
   };
 
   const shareService = async () => {
+    const url = window.location.href;
     const text = "꿈을 로또 번호로 번역해주는 해말아에서 오늘의 번호 리포트를 뽑아봤어요.";
-    const url = typeof window !== "undefined" ? window.location.href : "https://www.haemala.com";
 
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: "해말아 - 꿈 번호 리포트",
-          text,
-          url,
-        });
+        await navigator.share({ title: "해말아 - 꿈 번호 리포트", text, url });
       } else {
         await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1600);
+        showToast("링크가 복사됐습니다");
       }
     } catch {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
+      showToast("링크가 복사됐습니다");
     }
+  };
+
+  const copyNumbers = async () => {
+    if (picks.length === 0) return;
+
+    const text = picks
+      .map((p, i) => `${i + 1}조합: ${p.numbers.join(", ")} + 보너스 ${p.bonus}`)
+      .join("\n");
+
+    await navigator.clipboard.writeText(text);
+    showToast("번호가 복사됐습니다");
   };
 
   const loadHistory = (item: HistoryItem) => {
@@ -333,6 +341,7 @@ export default function Home() {
   const clearHistory = () => {
     setHistory([]);
     localStorage.removeItem(STORAGE_KEY);
+    showToast("히스토리를 삭제했습니다");
   };
 
   return (
@@ -340,20 +349,26 @@ export default function Home() {
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(250,204,21,0.22),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.18),transparent_30%),linear-gradient(180deg,#09090b_0%,#11100b_50%,#050505_100%)]" />
       <div className="pointer-events-none fixed inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.18)_1px,transparent_1px)] [background-size:42px_42px]" />
 
+      {toast && (
+        <div className="fixed left-1/2 top-5 z-50 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/80 px-5 py-3 text-sm font-black text-amber-200 shadow-2xl backdrop-blur-xl">
+          {toast}
+        </div>
+      )}
+
       <section className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-12">
         <header className="relative overflow-hidden rounded-[2rem] border border-amber-300/25 bg-white/[0.06] p-6 shadow-2xl backdrop-blur-xl sm:p-10">
           <div className="absolute right-[-80px] top-[-90px] h-72 w-72 rounded-full bg-amber-300/20 blur-3xl" />
 
           <div className="mb-7 flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-2 text-xs font-black text-amber-200">
-              HAEMALA PREMIUM READING
+              HAEMALA FINAL EDITION
             </span>
             <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-300">
-              DB 없음 · 무료 · 공유 가능 · 이미지 저장
+              DB 없음 · 무료 · 공유 · 저장 · 광고 슬롯
             </span>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-end">
+          <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
             <div>
               <h1 className="text-5xl font-black tracking-[-0.06em] text-white sm:text-7xl lg:text-8xl">
                 해말아
@@ -376,21 +391,20 @@ export default function Home() {
                   onClick={() => document.getElementById("input")?.scrollIntoView({ behavior: "smooth" })}
                   className="rounded-2xl bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600 px-5 py-3 text-sm font-black text-black shadow-[0_12px_35px_rgba(250,204,21,0.25)]"
                 >
-                  지금 번호 뽑기
+                  번호 뽑기
                 </button>
-
                 <button
                   onClick={shareService}
                   className="rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-3 text-sm font-black text-white"
                 >
-                  {copied ? "링크 복사됨" : "친구에게 공유"}
+                  친구에게 공유
                 </button>
               </div>
             </div>
 
             <div className="grid gap-4">
               <div className="rounded-[1.7rem] border border-amber-300/20 bg-black/30 p-5">
-                <p className="text-sm font-black text-amber-200">수익화 구조</p>
+                <p className="text-sm font-black text-amber-200">수익형 구조</p>
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                   {["검색 유입", "결과 체류", "이미지 공유", "광고 노출"].map((x) => (
                     <div key={x} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 font-bold">
@@ -425,7 +439,7 @@ export default function Home() {
             />
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {EXAMPLE_DREAMS.map((x, i) => (
+              {EXAMPLES.map((x, i) => (
                 <button
                   key={x}
                   onClick={() => setDream(x)}
@@ -456,23 +470,27 @@ export default function Home() {
             </button>
           </div>
 
-          <aside className="rounded-[2rem] border border-amber-300/15 bg-black/35 p-5 shadow-2xl backdrop-blur-xl sm:p-7">
-            <p className="text-sm font-black text-amber-200">RETENTION ENGINE</p>
-            <h2 className="mt-1 text-2xl font-black">다시 들어오게 만드는 장치</h2>
+          <aside className="grid gap-5">
+            <div className="rounded-[2rem] border border-amber-300/15 bg-black/35 p-5 shadow-2xl backdrop-blur-xl sm:p-7">
+              <p className="text-sm font-black text-amber-200">CONVERSION ENGINE</p>
+              <h2 className="mt-1 text-2xl font-black">체류와 공유를 만드는 구조</h2>
 
-            <div className="mt-6 space-y-4">
-              {[
-                ["결과 히스토리", "최근 리포트를 브라우저에 저장합니다. DB 없이 재방문 경험을 만듭니다."],
-                ["공유 CTA", "결과 저장과 링크 공유로 SNS 유입 흐름을 만듭니다."],
-                ["광고 슬롯", "AdSense 승인 후 상단·중단·하단에 광고를 배치할 수 있습니다."],
-                ["체류 구조", "번호만 보여주지 않고 해석 카드와 균형 지표를 함께 보여줍니다."],
-              ].map(([a, b]) => (
-                <div key={a} className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-5">
-                  <p className="font-black text-white">{a}</p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-zinc-400">{b}</p>
-                </div>
-              ))}
+              <div className="mt-6 space-y-4">
+                {[
+                  ["결과 히스토리", "최근 리포트를 브라우저에 저장합니다. DB 없이 재방문 경험을 만듭니다."],
+                  ["공유 CTA", "결과 저장과 링크 공유로 카톡·SNS 유입 흐름을 만듭니다."],
+                  ["광고 슬롯", "AdSense 승인 후 상단·중단·하단에 광고를 배치할 수 있습니다."],
+                  ["SEO 콘텐츠", "하단 FAQ와 설명 영역으로 검색 유입 기반을 만듭니다."],
+                ].map(([a, b]) => (
+                  <div key={a} className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-5">
+                    <p className="font-black text-white">{a}</p>
+                    <p className="mt-2 text-sm font-medium leading-6 text-zinc-400">{b}</p>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            <AdSlot label="INPUT SIDE AD" />
           </aside>
         </section>
 
@@ -497,6 +515,12 @@ export default function Home() {
                     className="rounded-2xl border border-amber-300/30 bg-amber-300 px-5 py-3 text-sm font-black text-black shadow-[0_12px_35px_rgba(250,204,21,0.25)]"
                   >
                     이미지 저장
+                  </button>
+                  <button
+                    onClick={copyNumbers}
+                    className="rounded-2xl border border-white/15 bg-white/[0.06] px-5 py-3 text-sm font-black text-white"
+                  >
+                    번호 복사
                   </button>
                   <button
                     onClick={shareService}
@@ -570,7 +594,7 @@ export default function Home() {
               </div>
             </div>
 
-            <aside className="grid gap-5 content-start">
+            <aside className="grid content-start gap-5">
               <AdSlot label="RESULT AD SLOT" />
 
               <div className="rounded-[1.5rem] border border-amber-300/20 bg-amber-300/10 p-5">
@@ -585,6 +609,16 @@ export default function Home() {
                   링크 공유하기
                 </button>
               </div>
+
+              <button
+                onClick={generate}
+                className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5 text-left font-black text-white"
+              >
+                같은 꿈으로 다시 뽑기
+                <span className="mt-2 block text-sm font-semibold text-zinc-400">
+                  같은 꿈도 매번 다른 보안 난수를 반영합니다.
+                </span>
+              </button>
             </aside>
           </section>
         )}
@@ -632,10 +666,37 @@ export default function Home() {
           <AdSlot label="BOTTOM AD SLOT" />
         </section>
 
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-6 shadow-2xl backdrop-blur-xl sm:p-8">
+          <p className="text-sm font-black text-amber-200">SEO CONTENT</p>
+          <h2 className="mt-1 text-2xl font-black">꿈 번호 리딩 FAQ</h2>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {[
+              [
+                "꿈 해몽 로또 번호가 실제로 맞나요?",
+                "복권은 확률 게임이므로 당첨을 보장할 수 없습니다. 해말아는 꿈의 상징을 바탕으로 재미와 기록용 번호 리포트를 제공합니다.",
+              ],
+              [
+                "번호가 매번 다른 이유는?",
+                "입력한 꿈 문장, 브라우저 보안 난수, 시간 시드, 번호 분산 보정 로직을 함께 사용하기 때문입니다.",
+              ],
+              [
+                "개인정보가 저장되나요?",
+                "DB를 사용하지 않으며, 최근 리포트는 사용자의 브라우저 localStorage에만 저장됩니다.",
+              ],
+            ].map(([q, a]) => (
+              <div key={q} className="rounded-[1.5rem] border border-white/10 bg-black/25 p-5">
+                <p className="font-black text-white">{q}</p>
+                <p className="mt-3 text-sm font-semibold leading-6 text-zinc-400">{a}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <footer className="pb-6 text-center text-xs font-bold leading-6 text-zinc-500">
           HAEMALA · 무료 운세형 번호 리딩 서비스 · 당첨 보장 없음
           <br />
-          본 서비스는 오락용 콘텐츠이며, 복권 구매 또는 당첨을 보장하지 않습니다.
+          본 서비스는 오락용 콘텐츠이며, 복권 구매 또는 당첨을 권유하거나 당첨을 보장하지 않습니다.
         </footer>
       </section>
     </main>
