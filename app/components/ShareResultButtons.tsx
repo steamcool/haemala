@@ -14,72 +14,79 @@ export default function ShareResultButtons({
   fileName,
   shareText,
 }: ShareResultButtonsProps) {
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "copied">(
+    "idle"
+  );
 
   async function saveImage() {
     const target = document.getElementById(targetId);
+    if (!target) return;
 
-    if (!target) {
-      setStatus("결과 카드를 찾지 못했습니다.");
-      return;
+    try {
+      setStatus("saving");
+
+      const canvas = await html2canvas(target, {
+        backgroundColor: null,
+        scale: 2,
+        useCORS: true,
+      });
+
+      const link = document.createElement("a");
+      link.download = `${fileName}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      setStatus("saved");
+      window.setTimeout(() => setStatus("idle"), 1600);
+    } catch {
+      setStatus("idle");
     }
-
-    setStatus("이미지 생성 중...");
-
-    const canvas = await html2canvas(target, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-    });
-
-    const image = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = image;
-    link.download = `${fileName}.png`;
-    link.click();
-
-    setStatus("이미지 저장 완료");
   }
 
-  async function shareResult() {
+  async function shareOrCopy() {
     const url = window.location.href;
-    const text = `${shareText}\n${url}`;
+    const text = `${shareText}\n\n${url}`;
 
-    if (navigator.share) {
-      await navigator.share({
-        title: "해말아 번호 리포트",
-        text,
-        url,
-      });
-      setStatus("공유 완료");
-      return;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "해말아 번호 리포트",
+          text,
+          url,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(text);
+      setStatus("copied");
+      window.setTimeout(() => setStatus("idle"), 1600);
+    } catch {
+      setStatus("idle");
     }
-
-    await navigator.clipboard.writeText(text);
-    setStatus("공유 문구 복사 완료");
   }
 
   return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+    <div className="mt-5 grid gap-3 sm:grid-cols-2">
       <button
+        type="button"
         onClick={saveImage}
-        className="rounded-full bg-[#1d1d1f] px-7 py-4 text-base font-bold text-white transition hover:-translate-y-0.5"
+        disabled={status === "saving"}
+        className="rounded-full border border-black/10 bg-black px-7 py-4 text-base font-black text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        이미지 저장
+        {status === "saving"
+          ? "이미지 생성 중..."
+          : status === "saved"
+            ? "이미지 저장 완료"
+            : "결과 이미지 저장"}
       </button>
 
       <button
-        onClick={shareResult}
-        className="rounded-full bg-white px-7 py-4 text-base font-bold text-black ring-1 ring-black/10 transition hover:-translate-y-0.5"
+        type="button"
+        onClick={shareOrCopy}
+        className="rounded-full bg-black/5 px-7 py-4 text-base font-black text-black transition hover:-translate-y-0.5"
       >
-        결과 공유
+        {status === "copied" ? "공유 문구 복사 완료" : "결과 공유하기"}
       </button>
-
-      {status && (
-        <p className="text-center text-xs font-bold text-neutral-400 sm:col-span-2">
-          {status}
-        </p>
-      )}
     </div>
   );
 }
