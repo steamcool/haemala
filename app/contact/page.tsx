@@ -27,7 +27,7 @@ export default function ContactPage() {
           <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
             <p className="text-sm font-black text-slate-500">이메일</p>
             <p className="mt-2 text-xl font-black text-slate-900">
-              contact@haemala.com
+              steamcool@kakao.com
             </p>
           </div>
 
