@@ -1,47 +1,46 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 
 const siteUrl = "https://www.haemala.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+
   title: {
-    default: "해말아 | MBTI + AI 시대 적합도 테스트",
+    default: "해말아 | 할까 말까 고민될 때 결정 성향 테스트",
     template: "%s | 해말아",
   },
+
   description:
-    "MBTI 성향과 AI 활용 적합도를 함께 분석하는 96문항 인터랙션 테스트입니다.",
+    "할까 말까 고민될 때, 해말아. 결정 성향 테스트, 선택 시뮬레이터, 오늘의 결정운으로 지금 선택을 더 선명하게 확인하세요.",
+
   keywords: [
-    "해말아",
+    "결정",
+    "선택",
+    "성향 테스트",
     "MBTI",
-    "AI 테스트",
-    "AI 적합도",
-    "AIQ",
-    "성향테스트",
-    "심리테스트",
-    "AI 시대",
+    "결정장애",
+    "랜덤 선택",
+    "오늘의 운세",
   ],
-  authors: [{ name: "Haemala" }],
-  creator: "Haemala",
-  publisher: "Haemala",
-  alternates: {
-    canonical: "/",
-  },
+
   openGraph: {
-    type: "website",
-    locale: "ko_KR",
+    title: "해말아 | 결정이 어려울 때",
+    description: "할까 말까 고민될 때, 해말아",
     url: siteUrl,
     siteName: "해말아",
-    title: "해말아 | MBTI + AI 시대 적합도 테스트",
-    description:
-      "MBTI 성향, AI 활용 적합도, 그리고 두 결과를 섞은 AI 시대 캐릭터를 확인하세요.",
+    images: [
+      {
+        url: `${siteUrl}/og.png`,
+        width: 1200,
+        height: 630,
+      },
+    ],
+    locale: "ko_KR",
+    type: "website",
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "해말아 | MBTI + AI 시대 적합도 테스트",
-    description:
-      "96문항으로 확인하는 MBTI 성향 + AI 시대 적합도 테스트.",
-  },
+
   robots: {
     index: true,
     follow: true,
@@ -51,23 +50,32 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#f7f3ec",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="ko">
-      <head>
-        <link
-          href="https://hangeul.pstatic.net/hangeul_static/css/nanum-square-neo.css"
-          rel="stylesheet"
+      <body className="bg-white text-gray-900 antialiased">
+        {children}
+
+        {/* ✅ 구글 애드센스 */}
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3423569278516833"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
         />
-      </head>
-      <body>{children}</body>
+
+        {/* ✅ 카카오 SDK */}
+        <Script
+          src="https://developers.kakao.com/sdk/js/kakao.js"
+          strategy="afterInteractive"
+        />
+      </body>
     </html>
   );
 }
