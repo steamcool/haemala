@@ -1,220 +1,157 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-type TraitKey = "drive" | "analysis" | "sense" | "safe";
-
-const questions: {
-  q: string;
-  a: { text: string; score: Record<TraitKey, number> }[];
-}[] = [
+const questions = [
   {
-    q: "갑자기 좋은 기회가 왔다. 그런데 정보가 부족하다.",
-    a: [
-      { text: "일단 잡고 보완한다", score: { drive: 3, analysis: 0, sense: 1, safe: 0 } },
-      { text: "자료를 더 모은다", score: { drive: 0, analysis: 3, sense: 0, safe: 1 } },
-      { text: "느낌이 좋으면 간다", score: { drive: 1, analysis: 0, sense: 3, safe: 0 } },
-      { text: "리스크부터 계산한다", score: { drive: 0, analysis: 1, sense: 0, safe: 3 } },
+    title: "고민이 생기면 나는 보통",
+    options: [
+      { text: "충분히 생각하고 결정한다", type: "careful" },
+      { text: "일단 마음이 가는 쪽을 고른다", type: "intuitive" },
+      { text: "손해가 적은 쪽을 계산한다", type: "practical" },
     ],
   },
   {
-    q: "주변 사람들이 다 말린다. 그래도 마음은 간다.",
-    a: [
-      { text: "내 선택이니까 간다", score: { drive: 3, analysis: 0, sense: 2, safe: 0 } },
-      { text: "왜 말리는지 분석한다", score: { drive: 0, analysis: 3, sense: 0, safe: 1 } },
-      { text: "내 감이 맞는지 본다", score: { drive: 1, analysis: 0, sense: 3, safe: 0 } },
-      { text: "일단 멈춘다", score: { drive: 0, analysis: 1, sense: 0, safe: 3 } },
+    title: "선택지가 많을 때 나는",
+    options: [
+      { text: "기준을 세우고 하나씩 비교한다", type: "careful" },
+      { text: "끌리는 선택지를 먼저 본다", type: "intuitive" },
+      { text: "가장 현실적인 선택을 고른다", type: "practical" },
     ],
   },
   {
-    q: "선택 후 실패할 가능성이 보인다.",
-    a: [
-      { text: "실패해도 경험이다", score: { drive: 3, analysis: 0, sense: 1, safe: 0 } },
-      { text: "실패 원인을 미리 제거한다", score: { drive: 0, analysis: 3, sense: 0, safe: 1 } },
-      { text: "불안하면 안 한다", score: { drive: 0, analysis: 1, sense: 2, safe: 2 } },
-      { text: "손해가 크면 포기한다", score: { drive: 0, analysis: 1, sense: 0, safe: 3 } },
+    title: "중요한 결정을 앞두면",
+    options: [
+      { text: "정보를 더 찾아본다", type: "careful" },
+      { text: "내 감각을 믿는다", type: "intuitive" },
+      { text: "비용과 리스크를 따진다", type: "practical" },
     ],
   },
   {
-    q: "시간이 별로 없다. 오늘 안에 결정해야 한다.",
-    a: [
-      { text: "빠르게 결정한다", score: { drive: 3, analysis: 0, sense: 1, safe: 0 } },
-      { text: "핵심 기준만 뽑는다", score: { drive: 1, analysis: 3, sense: 0, safe: 0 } },
-      { text: "마음이 끌리는 쪽으로 간다", score: { drive: 1, analysis: 0, sense: 3, safe: 0 } },
-      { text: "중요하면 미룬다", score: { drive: 0, analysis: 1, sense: 0, safe: 3 } },
+    title: "후회가 걱정될 때 나는",
+    options: [
+      { text: "더 오래 고민한다", type: "careful" },
+      { text: "그래도 하고 싶은 쪽을 고른다", type: "intuitive" },
+      { text: "후폭풍이 적은 쪽을 택한다", type: "practical" },
     ],
   },
   {
-    q: "결정하고 나서 후회한 적이 많다.",
-    a: [
-      { text: "그래도 안 하는 것보다 낫다", score: { drive: 3, analysis: 0, sense: 1, safe: 0 } },
-      { text: "다음엔 기준표를 만든다", score: { drive: 0, analysis: 3, sense: 0, safe: 1 } },
-      { text: "그때 감정이 중요했다", score: { drive: 0, analysis: 0, sense: 3, safe: 0 } },
-      { text: "이제는 더 조심한다", score: { drive: 0, analysis: 1, sense: 0, safe: 3 } },
+    title: "친구가 조언을 구하면 나는",
+    options: [
+      { text: "장단점을 같이 정리해준다", type: "careful" },
+      { text: "네 마음이 뭔지 묻는다", type: "intuitive" },
+      { text: "현실적으로 가능한지 본다", type: "practical" },
+    ],
+  },
+  {
+    title: "갑자기 기회가 생기면",
+    options: [
+      { text: "조건을 먼저 확인한다", type: "careful" },
+      { text: "느낌이 좋으면 잡는다", type: "intuitive" },
+      { text: "실익이 있으면 움직인다", type: "practical" },
+    ],
+  },
+  {
+    title: "내가 가장 피하고 싶은 것은",
+    options: [
+      { text: "성급한 선택", type: "careful" },
+      { text: "마음에 없는 선택", type: "intuitive" },
+      { text: "손해 보는 선택", type: "practical" },
+    ],
+  },
+  {
+    title: "나에게 좋은 결정이란",
+    options: [
+      { text: "충분히 납득되는 결정", type: "careful" },
+      { text: "내 마음이 살아있는 결정", type: "intuitive" },
+      { text: "현실적으로 유지 가능한 결정", type: "practical" },
     ],
   },
 ];
 
-const resultMap = {
-  drive: {
-    name: "돌진형 실행가",
-    desc: "고민보다 실행이 빠른 타입입니다. 기회를 잡는 힘은 강하지만, 감정이 올라왔을 때 과속할 수 있습니다.",
-    advice: "오늘은 바로 움직이되, 최소한의 손실 제한선을 정하고 시작하세요.",
-  },
-  analysis: {
-    name: "분석형 보류가",
-    desc: "근거가 쌓여야 움직이는 타입입니다. 실수는 적지만, 타이밍을 놓칠 위험이 있습니다.",
-    advice: "오늘은 100점짜리 확신보다 70점짜리 실행을 목표로 하세요.",
-  },
-  sense: {
-    name: "직감형 감각러",
-    desc: "상황의 공기와 느낌을 빠르게 읽는 타입입니다. 사람 문제에는 강하지만 기분에 흔들릴 수 있습니다.",
-    advice: "오늘은 느낌을 믿되, 결정 전 딱 한 번만 숫자로 검증하세요.",
-  },
-  safe: {
-    name: "안전형 방어자",
-    desc: "손해를 피하는 능력이 강한 타입입니다. 안정적이지만, 좋은 변화도 위험으로 볼 수 있습니다.",
-    advice: "오늘은 완전한 안전보다 감당 가능한 작은 도전을 선택하세요.",
-  },
-};
-
 export default function TestPlayPage() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
-  const [scores, setScores] = useState<Record<TraitKey, number>>({
-    drive: 0,
-    analysis: 0,
-    sense: 0,
-    safe: 0,
+  const [scores, setScores] = useState({
+    careful: 0,
+    intuitive: 0,
+    practical: 0,
   });
-  const [done, setDone] = useState(false);
 
-  const topKey = useMemo(() => {
-    return (Object.keys(scores) as TraitKey[]).sort((a, b) => scores[b] - scores[a])[0];
-  }, [scores]);
+  const current = questions[step];
+  const progress = useMemo(
+    () => Math.round(((step + 1) / questions.length) * 100),
+    [step]
+  );
 
-  const total = Math.max(1, Object.values(scores).reduce((a, b) => a + b, 0));
+  function choose(type: "careful" | "intuitive" | "practical") {
+    const nextScores = {
+      ...scores,
+      [type]: scores[type] + 1,
+    };
 
-  function choose(score: Record<TraitKey, number>) {
-    const next = { ...scores };
-    Object.keys(score).forEach((key) => {
-      const trait = key as TraitKey;
-      next[trait] += score[trait];
-    });
+    setScores(nextScores);
 
-    setScores(next);
+    if (step === questions.length - 1) {
+      const result = Object.entries(nextScores).sort(
+        (a, b) => b[1] - a[1]
+      )[0][0];
 
-    if (step >= questions.length - 1) {
-      setDone(true);
-    } else {
-      setStep(step + 1);
+      router.push(`/test/result?type=${result}`);
+      return;
     }
+
+    setStep(step + 1);
   }
 
-  const result = resultMap[topKey];
-
   return (
-    <main className="min-h-screen bg-[#f7f3ec] px-5 py-10 text-[#17130f]">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 flex items-center justify-between">
-          <Link href="/" className="text-sm font-black text-black/50">
-            ← HAEMALA
-          </Link>
-          <p className="text-sm font-black text-black/40">
-            {done ? "RESULT" : `${step + 1} / ${questions.length}`}
-          </p>
+    <main className="min-h-screen bg-gray-50 px-4 py-10">
+      <section className="mx-auto max-w-2xl">
+        <div className="mb-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-500">
+              {step + 1} / {questions.length}
+            </p>
+            <p className="text-sm font-medium text-gray-500">{progress}%</p>
+          </div>
+
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full bg-gray-900 transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
 
-        <section className="grid gap-6 md:grid-cols-[0.9fr_1.1fr]">
-          <aside className="rounded-[2rem] border border-black/10 bg-white p-6 shadow-xl shadow-black/5">
-            <p className="text-sm font-black text-black/40">LIVE TENDENCY</p>
-            <h2 className="mt-3 text-3xl font-black">{resultMap[topKey].name}</h2>
-            <p className="mt-3 leading-7 text-black/60">
-              현재 당신은 <b>{resultMap[topKey].name}</b> 쪽으로 기울고 있습니다.
-            </p>
+        <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium text-gray-500">Question</p>
 
-            <div className="mt-8 space-y-5">
-              {[
-                ["drive", "실행"],
-                ["analysis", "분석"],
-                ["sense", "직감"],
-                ["safe", "안전"],
-              ].map(([key, label]) => {
-                const value = Math.round((scores[key as TraitKey] / total) * 100);
-                return (
-                  <div key={key}>
-                    <div className="mb-2 flex justify-between text-sm font-black">
-                      <span>{label}</span>
-                      <span>{value}%</span>
-                    </div>
-                    <div className="h-3 rounded-full bg-black/10">
-                      <div
-                        className="h-3 rounded-full bg-black transition-all"
-                        style={{ width: `${value}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </aside>
+          <h1 className="mt-3 text-2xl font-bold leading-snug text-gray-900">
+            {current.title}
+          </h1>
 
-          <section className="rounded-[2rem] border border-black/10 bg-white p-6 shadow-xl shadow-black/5 md:p-8">
-            {!done ? (
-              <>
-                <p className="text-sm font-black text-black/40">QUESTION</p>
-                <h1 className="mt-4 text-3xl font-black leading-tight md:text-5xl">
-                  {questions[step].q}
-                </h1>
+          <div className="mt-8 grid gap-3">
+            {current.options.map((option) => (
+              <button
+                key={option.text}
+                onClick={() =>
+                  choose(option.type as "careful" | "intuitive" | "practical")
+                }
+                className="rounded-2xl border border-gray-200 bg-white p-4 text-left transition hover:border-gray-400 hover:bg-gray-50 active:scale-[0.99]"
+              >
+                <span className="text-base font-semibold text-gray-800">
+                  {option.text}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-                <div className="mt-8 grid gap-3">
-                  {questions[step].a.map((answer) => (
-                    <button
-                      key={answer.text}
-                      onClick={() => choose(answer.score)}
-                      className="rounded-2xl border border-black/10 bg-[#faf8f3] p-5 text-left text-lg font-black transition hover:-translate-y-0.5 hover:bg-black hover:text-white"
-                    >
-                      {answer.text}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-black text-black/40">FINAL RESULT</p>
-                <h1 className="mt-4 text-4xl font-black md:text-6xl">{result.name}</h1>
-                <p className="mt-6 text-lg font-medium leading-8 text-black/65">
-                  {result.desc}
-                </p>
-
-                <div className="mt-8 rounded-[1.5rem] bg-black p-6 text-white">
-                  <p className="text-sm font-black text-white/50">오늘의 해말아 조언</p>
-                  <p className="mt-3 text-xl font-black leading-8">{result.advice}</p>
-                </div>
-
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Link
-                    href={`/simulate?type=${topKey}`}
-                    className="rounded-2xl bg-black px-7 py-4 text-center font-black text-white shadow-xl shadow-black/20"
-                  >
-                    지금 선택 시뮬레이션하기
-                  </Link>
-                  <button
-                    onClick={() => {
-                      setStep(0);
-                      setDone(false);
-                      setScores({ drive: 0, analysis: 0, sense: 0, safe: 0 });
-                    }}
-                    className="rounded-2xl border border-black/10 bg-white px-7 py-4 font-black"
-                  >
-                    다시 테스트
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        </section>
-      </div>
+        <p className="mt-6 text-center text-xs text-gray-400">
+          정답은 없습니다. 지금 가장 가까운 답을 고르세요.
+        </p>
+      </section>
     </main>
   );
 }

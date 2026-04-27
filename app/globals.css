@@ -1,1 +1,29 @@
-@import "tailwindcss";
+html,
+body {
+  font-family:
+    "NanumSquareNeo",
+    "NanumSquareNeoBold",
+    -apple-system,
+    BlinkMacSystemFont,
+    system-ui,
+    sans-serif;
+  word-break: keep-all;
+  letter-spacing: -0.02em;
+}
+
+h1,
+h2,
+h3,
+.font-black {
+  font-family:
+    "NanumSquareNeoExtraBold",
+    "NanumSquareNeoBold",
+    sans-serif;
+}
+
+p,
+button,
+a,
+span {
+  line-height: 1.65;
+}

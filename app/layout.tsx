@@ -6,20 +6,20 @@ const siteUrl = "https://www.haemala.com";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "해말아 | 할까 말까 고민될 때 결정 성향 테스트",
+    default: "해말아 | MBTI + AI 시대 적합도 테스트",
     template: "%s | 해말아",
   },
   description:
-    "할까 말까 고민될 때, 해말아. 결정 성향 테스트, 선택 시뮬레이터, 오늘의 결정운으로 지금 선택을 더 선명하게 확인하세요.",
+    "MBTI 성향과 AI 활용 적합도를 함께 분석하는 96문항 인터랙션 테스트입니다.",
   keywords: [
     "해말아",
-    "할까 말까",
+    "MBTI",
+    "AI 테스트",
+    "AI 적합도",
+    "AIQ",
     "성향테스트",
-    "결정 테스트",
-    "선택 시뮬레이터",
-    "오늘의 운세",
-    "랜덤 결정기",
     "심리테스트",
+    "AI 시대",
   ],
   authors: [{ name: "Haemala" }],
   creator: "Haemala",
@@ -32,15 +32,15 @@ export const metadata: Metadata = {
     locale: "ko_KR",
     url: siteUrl,
     siteName: "해말아",
-    title: "해말아 | 할까 말까 고민될 때 결정 성향 테스트",
+    title: "해말아 | MBTI + AI 시대 적합도 테스트",
     description:
-      "결정 성향을 분석하고 지금 선택해도 되는지 시뮬레이션하는 해말아.",
+      "MBTI 성향, AI 활용 적합도, 그리고 두 결과를 섞은 AI 시대 캐릭터를 확인하세요.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "해말아 | 할까 말까 고민될 때",
+    title: "해말아 | MBTI + AI 시대 적합도 테스트",
     description:
-      "성향테스트와 선택 시뮬레이터로 오늘의 결정을 확인하세요.",
+      "96문항으로 확인하는 MBTI 성향 + AI 시대 적합도 테스트.",
   },
   robots: {
     index: true,
@@ -61,6 +61,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
+      <head>
+        <link
+          href="https://hangeul.pstatic.net/hangeul_static/css/nanum-square-neo.css"
+          rel="stylesheet"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );
